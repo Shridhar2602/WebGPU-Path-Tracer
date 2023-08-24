@@ -38,6 +38,10 @@ async function main(device) {
 	  device,
 	  format: presentationFormat,
 	});
+
+	var stats = new Stats();
+	stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+	document.body.appendChild( stats.dom );
   
 	// creating shader module 
 	const module = device.createShaderModule({
@@ -47,11 +51,9 @@ async function main(device) {
 
 	const WIDTH = canvas.clientWidth;
 	const HEIGHT = canvas.clientHeight;
-	const ASPECT = WIDTH / HEIGHT;
-	// console.log(WIDTH, HEIGHT, ASPECT)
 
 	// Setting uniforms
-	const screenDims = new Float32Array([WIDTH, HEIGHT, ASPECT]);
+	var screenDims = new Float32Array([WIDTH, HEIGHT, 0]);
 	const dimsBuffer = device.createBuffer({
 	  	label: 'screen dims buffer',
 		size: screenDims.byteLength,
@@ -59,16 +61,18 @@ async function main(device) {
 	});
 	device.queue.writeBuffer(dimsBuffer, 0, screenDims);
 
-	// const randState = new Float32Array([WIDTH, HEIGHT]);
-	// const randBuffer = device.createBuffer({
-	//   	label: 'screen dims buffer',
-	// 	size: screenDims.byteLength,
-	// 	usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-	// });
-	// device.queue.writeBuffer(randBuffer, 0, randState);
+	// setting sphere data
+	var spheres = create_spheres();
+
+	const sphereBuffer = device.createBuffer({
+		label: 'spheres buffer',
+	  	size: spheres.byteLength,
+	  	usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(sphereBuffer, 0, spheres);
 
 
-	// ============================== COMPUTE PIPELINE ================================
+	// ============================== RENDER PIPELINE ================================
 
 	// Vertex Buffer to draw a quad spanning the whole canvas
 	const vertexData = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
@@ -103,7 +107,7 @@ async function main(device) {
 		layout: pipeline.getBindGroupLayout(0),
 		entries: [
 		  { binding: 0, resource: {buffer : dimsBuffer}},
-		//   { binding: 1, resource: {buffer : randBuffer}},
+		  { binding: 1, resource: {buffer : sphereBuffer}},
 		],
 	});
 
@@ -119,45 +123,54 @@ async function main(device) {
 	  ],
 	};
 
-	function render()
-	{
-		renderPassDescriptor.colorAttachments[0].view = context.getCurrentTexture().createView();
+	// function render()
+	// {
+	// 	renderPassDescriptor.colorAttachments[0].view = context.getCurrentTexture().createView();
 			  
-		const renderEncoder = device.createCommandEncoder({label: 'render encoder'});
-		const renderPass = renderEncoder.beginRenderPass(renderPassDescriptor);
-		renderPass.setPipeline(pipeline);
-		renderPass.setBindGroup(0, bindGroup);
-		renderPass.setVertexBuffer(0, vertexBuffer);
-		renderPass.draw(6);  // call our vertex shader 6 times (2 triangles)
-		renderPass.end();
+	// 	const renderEncoder = device.createCommandEncoder({label: 'render encoder'});
+	// 	const renderPass = renderEncoder.beginRenderPass(renderPassDescriptor);
+	// 	renderPass.setPipeline(pipeline);
+	// 	renderPass.setBindGroup(0, bindGroup);
+	// 	renderPass.setVertexBuffer(0, vertexBuffer);
+	// 	renderPass.draw(6);  // call our vertex shader 6 times (2 triangles)
+	// 	renderPass.end();
 
-		const renderCommandBuffer = renderEncoder.finish();
-		device.queue.submit([renderCommandBuffer]);
-	}
+	// 	const renderCommandBuffer = renderEncoder.finish();
 
-	// const deltaTime = 1/60;
-	// async function render(time) {
-	// 	time *= 0.0001;
-
-
-	// 	// ============================== RENDER PASS ================================
-	//   	// Get the current texture from the canvas context and
-	//   	// set it as the texture to render to.
-	//   	renderPassDescriptor.colorAttachments[0].view = context.getCurrentTexture().createView();
-		  
-	//   	const renderEncoder = device.createCommandEncoder({label: 'render encoder'});
-	//   	const renderPass = renderEncoder.beginRenderPass(renderPassDescriptor);
-	//   	renderPass.setPipeline(pipeline);
-	//   	renderPass.setBindGroup(0, bindGroup);
-	//   	renderPass.setVertexBuffer(0, vertexBuffer);
-	//   	renderPass.draw(6);  // call our vertex shader 6 times (2 triangles)
-	//   	renderPass.end();
-  
-	//   	const renderCommandBuffer = renderEncoder.finish();
-	//   	device.queue.submit([renderCommandBuffer]);
-
-	//   	requestAnimationFrame(render);
+	// 	device.queue.submit([renderCommandBuffer]);
 	// }
+
+	const deltaTime = 1/60;
+	async function render(time) {
+		time *= 0.002;
+		stats.begin();
+
+
+
+		screenDims[2] = time;
+		device.queue.writeBuffer(dimsBuffer, 0, screenDims);
+
+		// ============================== RENDER PASS ================================
+	  	// Get the current texture from the canvas context and
+	  	// set it as the texture to render to.
+	  	renderPassDescriptor.colorAttachments[0].view = context.getCurrentTexture().createView();
+		  
+	  	const renderEncoder = device.createCommandEncoder({label: 'render encoder'});
+	  	const renderPass = renderEncoder.beginRenderPass(renderPassDescriptor);
+	  	renderPass.setPipeline(pipeline);
+	  	renderPass.setBindGroup(0, bindGroup);
+	  	renderPass.setVertexBuffer(0, vertexBuffer);
+	  	renderPass.draw(6);  // call our vertex shader 6 times (2 triangles)
+	  	renderPass.end();
+  
+	  	const renderCommandBuffer = renderEncoder.finish();
+
+	  	device.queue.submit([renderCommandBuffer]);
+
+
+		stats.end();
+	  	requestAnimationFrame(render);
+	}
 
   
 	// code to resize canvas (https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html)
@@ -182,3 +195,80 @@ function fail(msg) {
 }
 
 start();
+
+function create_spheres() {
+
+	var hittable = [];
+
+	// for(var a = -5; a < 5; a++)
+	// {
+	// 	for(var b = -5; b < 5; b++)
+	// 	{
+	// 		var choose_mat = Math.random();
+	// 		var center = [a + 0.9 * Math.random(), 0/2, b + 0/9 * Math.random()];
+
+	// 		var p1 = center[0] - 4;
+	// 		var p2 = center[1] - 0.2;
+	// 		var p3 = center[2] - 0;
+	// 		var length = Math.sqrt(p1*p1 + p2*p2 + p3*p3);
+
+	// 		if(length > 0.9)
+	// 		{
+	// 			if(choose_mat < 0.8)
+	// 			{
+	// 				hittable.push([
+	// 					center[0], center[1], center[2], 
+	// 					0.2, 
+	// 					Math.random(), Math.random(), Math.random(),
+	// 					0, 1, 1, 0, 0
+	// 				]);
+	// 			}
+
+	// 			else if(choose_mat < 0.95)
+	// 			{
+	// 				hittable.push([
+	// 					center[0], center[1], center[2], 
+	// 					0.2, 
+	// 					0.5 + 0.5 * Math.random(), 0.5 + 0.5 * Math.random(), 0.5 + 0.5 * Math.random(),
+	// 					1, 0.5 + 0.5 * Math.random(), 1, 0, 0
+	// 				]);
+	// 			}
+
+	// 			else 
+	// 			{
+	// 				hittable.push([
+	// 					center[0], center[1], center[2], 
+	// 					0.2, 
+	// 					1, 1, 1,
+	// 					2, 1, 1.5, 0, 0
+	// 				]);
+	// 			}
+	// 		}
+	// 	}
+	// }
+
+	hittable.push([0, -200.5, 0, 200, 0.5, 0.5, 0.5, 1, 0.1,   1, 0, 0]);
+	
+	hittable.push([0, 0, 0,      0.5, 1, 0, 0,     , 1,  1,   1, 0, 0]);
+	// hittable.push([-1, 0, 0,     0.5, 0.7, 0.7, 0.7, 1,  0.4, 1.5, 0, 0]);
+	// hittable.push([1, 0, 0,      0.5, 0.7, 0.7, 0.7, 1,  0,   1, 0, 0]);
+
+	hittable.push([1.1, 0.1, 0,    0.6, 0.7, 0.7, 0.7,   1,  0,   1, 0, 0]);
+	hittable.push([2.4, 0.2, 0,    0.7, 1, 0, 1,         0,  0,   1, 0, 0]);
+	hittable.push([-1.1, 0.1, 0,    0.6, 0.7, 0.7, 0.7,  1,  0,   1, 0, 0]);
+	hittable.push([-2.4, 0.2, 0,    0.7, 1, 1, 0,        0,  0,   1, 0, 0]);
+
+	hittable.push([0, 0.1, 1.1,     0.6, 0.7, 0.7, 0.7 ,  1,  0,   1.5, 0, 0]);
+	hittable.push([0, 0.2, 2.4,     0.7, 0, 1, 0,        0,  0,   1, 0, 0]);
+	hittable.push([0, 0.1, -1.1,    0.6, 0.7, 0.7, 0.7 ,  1 ,  0,   1.5, 0, 0]);
+	hittable.push([0, 0.2, -2.4,    0.7, 0, 1, 1,        0,  0,   1, 0, 0]);
+
+	// hittable.push([-3, 0.2, -2.4,    0.7, 1, 1, 1,        2,  0,   1, 0, 0]);
+
+
+
+	// hittable.push([0, 0, -1,      0.5, 0.7, 0.7, 0.7, 1,  0,   1, 0, 0]);
+	// hittable.push([0, 0, 1,      0.5, 0.7, 0.7, 0.7, 1,  0,   1, 0, 0]);
+
+	return new Float32Array(hittable.flat());
+}

@@ -2,23 +2,35 @@ export const FS = `
 
 const PI = 3.1415926535897932385;
 const MAX_FLOAT = 999999999.999;
-
-@group(0) @binding(0) var<uniform> screenDims: vec3<f32>;
-// @group(0) @binding(1) var<uniform> randState: vec2<f32>;
+const LAMBERTIAN = 0;
+const MIRROR = 1;
+const GLASS = 2;
+const NUM_OBJECTS = 10;
+const NUM_SAMPLES = 100;
+const MAX_BOUNCES = 10;
+const ROTATION = true;
 
 var<private> randState : vec2f;
 var<private> coords : vec3f;
 
 struct viewPort {
-	screenWidth : f32,
-	screenHeight : f32,
 	viewPortX : f32,
 	viewPortY : f32,
-	pixel_delta_u : f32,
-	pixel_delta_v : f32,
+	pixel_delta_u : vec3f,
+	pixel_delta_v : vec3f,
 }
 
-var<private> vp : viewPort;
+struct Camera {
+	center : vec3f,
+	u : vec3f,
+	v : vec3f,
+	w : vec3f,
+	lowerleftcorner : vec3f,
+	lensRadius : f32,
+	offset : vec3f,
+	horizontal : vec3f,
+	vertical : vec3f,
+}
 
 struct Ray {
 	orig : vec3f,
@@ -29,28 +41,37 @@ struct Sphere {
 	center : vec3f,
 	r : f32,
 	color : vec3f,
+	material : f32,
+	fuzz : f32,
+	eta : f32,
 }
 
 struct HitRecord {
-	hit : bool,
 	p : vec3f,
 	t : f32,
 	normal : vec3f,
 	front_face : bool,
-	color : vec3f,
+	obj : Sphere,
 }
+
+@group(0) @binding(0) var<uniform> screenDims: vec3<f32>;
+@group(0) @binding(1) var<storage, read> hittables: array<Sphere>;
+
+var<private> hitRec : HitRecord;
+var<private> cam : Camera;
+var<private> vp : viewPort;
 
 fn hash(n : f32) -> f32 
 {
     return fract(sin(n)*43758.54554213);
 }
 
+var<private> K1 = vec2f(23.14069263277926, 2.665144142690225);
 fn rand2D() -> f32
 {
     // randState.x = fract(sin(dot(randState, vec2(12.9898, 78.233))) * 43758.5453);
     // randState.y = fract(sin(dot(randState, vec2(12.9898, 78.233))) * 43758.5453);
 
-	let K1 = vec2f(23.14069263277926, 2.665144142690225);
 	randState.x = fract( cos( dot(randState,K1) ) * 12345.6789 );
 	randState.y = fract( cos( dot(randState,K1) ) * 12345.6789 );
     
@@ -65,7 +86,12 @@ fn at(ray : Ray, t : f32) -> vec3f {
 	return ray.orig + t * ray.dir;
 }
 
-fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> HitRecord {
+fn near_zero(v : vec3f) -> bool {
+	let s = 1e-8;
+	return (abs(v[0]) < 0 && abs(v[1]) < 0 && abs(v[2]) < 0);
+}
+
+fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
 	
 	let oc = ray.orig - sphere.center;
 	let a = dot(ray.dir, ray.dir);
@@ -73,10 +99,8 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> HitRecord {
 	let c = dot(oc, oc) - sphere.r * sphere.r;
 	let discriminant = half_b*half_b - a*c;
 
-	var hitRecord = HitRecord(false, vec3f(0),0,vec3f(0), false, sphere.color);
-
 	if(discriminant < 0) {
-		return hitRecord;
+		return false;
 	}
 
 	let sqrtd = sqrt(discriminant);
@@ -86,24 +110,24 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> HitRecord {
 		root = (-half_b + sqrtd) / a;
 		if(root <= tmin || root >= tmax)
 		{
-			return hitRecord;
+			return false;
 		}
 	}
 
-	hitRecord.hit = true;
-	hitRecord.t = root;
-	hitRecord.p = at(ray, root);
-	hitRecord.normal = (hitRecord.p - sphere.center) / sphere.r;
-	hitRecord.front_face = dot(ray.dir, hitRecord.normal) < 0;
-	if(hitRecord.front_face == false)
+	hitRec.t = root;
+	hitRec.p = at(ray, root);
+	hitRec.normal = (hitRec.p - sphere.center) / sphere.r;
+	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
+	if(hitRec.front_face == false)
 	{
-		hitRecord.normal = -hitRecord.normal;
+		hitRec.normal = -hitRec.normal;
 	}
+	hitRec.obj = sphere;
 
-	return hitRecord;
+	return true;
 }
 
-fn random_in_unit_sphere() -> vec3f{
+fn random_in_unit_sphere() -> vec3f {
 	
 	let phi = rand2D() * 2.0 * PI;
 	let theta = acos(2.0 * rand2D() - 1.0);
@@ -114,16 +138,13 @@ fn random_in_unit_sphere() -> vec3f{
 
 	let dir = normalize(vec3f(x, y, z));
 	return dir;
+}
 
-	// while(true) {
-	// 	var p = vec3f(random_double(-1, 1), random_double(-1, 1), random_double(-1, 1));
-	// 	if(dot(p, p) < 1)
-	// 	{
-	// 		return normalize(p);
-	// 	}
-	// }
+fn random_in_unit_disk() -> vec3f {
+	let theta = 2 * PI * rand2D();
+	let r = sqrt(rand2D());
 
-	// return vec3f(0);
+	return normalize(vec3f(r * cos(theta), r * sin(theta), 0));
 }
 
 fn random_on_hemisphere(normal : vec3f) -> vec3f {
@@ -136,82 +157,169 @@ fn random_on_hemisphere(normal : vec3f) -> vec3f {
 	}
 }
 
-fn ray_color(hittable : array<Sphere, 2>, ray : Ray, max_bounces : i32) -> vec3f {
+fn reflectance(cosine : f32, ref_idx : f32) -> f32 {
+	var r0 = (1 - ref_idx) / (1 + ref_idx);
+	r0 = r0 * r0;
+	return r0 + (1 - r0) * pow((1 - cosine), 5);
+}
+
+fn material_scatter(ray_in : Ray) -> Ray {
+
+	var scattered = Ray(vec3f(0), vec3f(0));
+	if(hitRec.obj.material == LAMBERTIAN)
+	{
+		var scatter_dir = random_on_hemisphere(hitRec.normal);
+		if(near_zero(scatter_dir))
+		{
+			scatter_dir = hitRec.normal;
+		}
+		scattered = Ray(hitRec.p, scatter_dir);
+	}
+
+	else if(hitRec.obj.material == MIRROR)
+	{
+		var reflected = reflect(normalize(ray_in.dir), hitRec.normal);
+		scattered = Ray(hitRec.p, reflected + hitRec.obj.fuzz * random_on_hemisphere(hitRec.normal));
+	}
+
+	else if(hitRec.obj.material == GLASS)
+	{
+		var ir = hitRec.obj.eta;
+		if(hitRec.front_face == true) {
+			ir = (1.0 / ir);
+		}
+
+		let unit_direction = normalize(ray_in.dir);
+		let cos_theta = min(dot(-unit_direction, hitRec.normal), 1.0);
+		let sin_theta = sqrt(1 - cos_theta*cos_theta);
+
+		var direction = vec3f(0);
+		if(ir * sin_theta > 1.0 || reflectance(cos_theta, ir) > rand2D()) {
+			direction = reflect(unit_direction, hitRec.normal);
+		}
+		else {
+			direction = refract(unit_direction, hitRec.normal, ir);
+		}
+
+		scattered = Ray(hitRec.p, direction);
+	}
+
+	return scattered;
+}
+
+fn ray_color(ray : Ray) -> vec3f {
 
 	var curRay = ray;
 	var acc_color = vec3f(1, 1, 1);
-	let a = 0.5 * (coords.y + 1.0);
+	let a = 0.55 * (1 - (coords.y / screenDims.y));
 
-	for(var i = 0; i < max_bounces; i++)
+	for(var i = 0; i < MAX_BOUNCES; i++)
 	{
-		var curHit = hit(hittable, curRay);
-
-		if(curHit.hit == false)
+		if(hit(curRay) == false)
 		{
 			return acc_color * (1 - a) * vec3f(1) + a * vec3(0.5, 0.7, 1.0);
 			// return acc_color * vec3f(0.5, 0.7, 1);
 		}
 
-		acc_color = (acc_color * 0.4 * curHit.color);
+		acc_color = (acc_color * hitRec.obj.color);
 
-		let direction = random_on_hemisphere(curHit.normal);
-		curRay = Ray(curHit.p, direction);
+		curRay = material_scatter(curRay);
 	}
 
-	
-	// return (1 - a) * vec3f(1) + a * vec3(0.5, 0.7, 1.0);
 	return acc_color;
 }
 
-fn hit(hittable : array<Sphere, 2>, ray : Ray) -> HitRecord
+fn hit(ray : Ray) -> bool
 {
-	var temp = HitRecord(false, vec3f(0), 0, vec3f(0), false, vec3f(0));
-	for(var i = 0; i < 2; i++)
-	{
-		temp = hit_sphere(hittable[i], 0.0001, MAX_FLOAT, ray);
+	// var temp = HitRecord(vec3f(0), 0, vec3f(0), false, vec3f(0));
+	var closest_so_far = MAX_FLOAT;
+	var hit_anything = false;
 
-		if(temp.hit == true)
+	for(var i = 0; i < NUM_OBJECTS; i++)
+	{
+		if(hit_sphere(hittables[i], 0.0001, closest_so_far, ray))
 		{
-			return temp;
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+			// return hit_anything;
 		}
 	}
 
-	return temp;
+	return hit_anything;
 }
 
-fn antialiased_color(num_samples : f32, coords : vec3f, hittable : array<Sphere, 2>) -> vec3f {
+fn antialiased_color() -> vec3f {
 	
 	var pixColor = vec3f(0, 0, 0);
-	for(var i = 0.0; i < num_samples; i += 1.0)
+	for(var i = 0.0; i < NUM_SAMPLES; i += 1.0)
 	{
-		let random_point = (rand2D() - 0.5) * vp.pixel_delta_u + (rand2D() - 0.5) * vp.pixel_delta_v;
-		let ray = Ray(vec3f(0, 0, 0), vec3f(coords.x + random_point, coords.y + random_point, -1));
-		// let ray = Ray(vec3f(0, 0, 0), vec3f(coords.x, coords.y, -1));
-
-		pixColor += ray_color(hittable, ray, 10);
+		let ray = camera_get_ray((coords.x + rand2D()) / screenDims.x, 1 - (coords.y + rand2D()) / screenDims.y);
+		pixColor += ray_color(ray);
 	}
 
-	pixColor /= num_samples;
+	pixColor /= NUM_SAMPLES;
 
 	// sqrt for gamma correction
-	return sqrt(pixColor.xyz);
+	return pixColor.xyz;
+}
+
+fn camera_init(lookfrom : vec3f, lookat : vec3f, up : vec3f, vfov : f32, aperture : f32, focusDist : f32) {
+	
+	cam.lensRadius = aperture / 2.0;
+
+	vp.viewPortY = 2 * tan(vfov * (PI / 180) / 2);
+	vp.viewPortX = vp.viewPortY * (screenDims.x / screenDims.y);
+
+	cam.center = lookfrom;
+	cam.w = normalize(lookfrom - lookat);
+	cam.u = normalize(cross(up, cam.w));
+	cam.v = cross(cam.w, cam.u);
+
+	cam.lowerleftcorner = cam.center 	- (vp.viewPortX / 2) * focusDist * cam.u 
+										- (vp.viewPortY / 2) * focusDist * cam.v 
+										- focusDist * cam.w;
+
+	cam.horizontal = vp.viewPortX * focusDist * cam.u;
+	cam.vertical = vp.viewPortY * focusDist * cam.v;
+}
+
+fn camera_get_ray(s : f32, t : f32) -> Ray {
+	let rd = cam.lensRadius * random_in_unit_disk();
+	let offset = cam.u * rd.x + cam.v * rd.y;
+
+	return Ray(
+				cam.center + offset,
+				cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center - offset
+			);
 }
 
 @fragment fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
 
-	// convert fragCoord to standard coordinate system
-	vp = viewPort(screenDims.x, screenDims.y, 2.0, 2.0 / screenDims.z, 2.0 / screenDims.x, (2.0 / screenDims.z) / screenDims.y);
-	coords = (fragCoord.xyz - vec3f(vp.screenWidth / 2, vp.screenHeight / 2, 0.0)) / vec3f(vp.screenWidth / vp.viewPortX, -vp.screenHeight / vp.viewPortY, 1);
+	var lookfrom = vec3f(2, 3.5, 4.5);
+	if(ROTATION)
+    {
+        let angle = screenDims.z / 2.0;
+    	let rotationMatrix = mat4x4f(cos(angle), 0.0, sin(angle), 0.0,
+                                          0.0, 1.0,        0.0, 0.0,
+                                 -sin(angle),  0.0, cos(angle), 0.0,
+                                         0.0,  0.0,        0.0, 1.0);
+    
+    	lookfrom = (rotationMatrix * vec4f(lookfrom, 1.0)).xyz;
+    }
 
-	randState = vec2(hash(coords.x), hash(coords.y));
-
-	let hittable = array<Sphere, 2>(
-		Sphere(vec3f(0, 0, -1), 0.4, vec3f(1, 1, 1)),
-		Sphere(vec3f(0, -100.4, -1), 100, vec3f(1, 1, 1)),
+	camera_init(
+		lookfrom,
+		vec3f(0, 0, 0),
+		vec3f(0, 1, 0),
+		60.0,
+		0.0,
+		1
 	);
 
-	var fragColor = antialiased_color(100, coords, hittable);
+	coords = fragCoord.xyz;
+	randState = vec2(hash(fragCoord.x), hash(fragCoord.y));
+
+	var fragColor = antialiased_color();
 	return vec4f(fragColor, 1);
   }
-
 `;

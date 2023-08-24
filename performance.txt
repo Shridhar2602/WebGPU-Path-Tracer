@@ -1,0 +1,1 @@
+1. Num_Samples = 100, Max_Bounces = 10, 900x500px ----------> 27-28fps
