@@ -1,14 +1,11 @@
-export const CS = `
-
 const PI = 3.1415926535897932385;
 const MAX_FLOAT = 999999999.999;
 const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
-const NUM_OBJECTS = 7;
-const NUM_SAMPLES = 10;
-const MAX_BOUNCES = 30;
-const ROTATION = false;
+const NUM_SAMPLES = 500;
+const MAX_BOUNCES = 5;
+const ROTATION = true;
 
 // var<private> randState : vec2f;
 var<private> randState : u32;
@@ -48,17 +45,41 @@ struct Sphere {
 	emissionColor : vec3f,
 }
 
+struct Quad {
+	Q : vec3f,
+	u : vec3f,
+	v : vec3f,
+	normal : vec3f,
+	D : f32,
+	w : vec3f, 
+	material : f32,
+
+	color : vec3f,
+	eta : f32,
+	emissionColor : vec3f,
+	fuzz : f32,
+}
+
 struct HitRecord {
 	p : vec3f,
 	t : f32,
 	normal : vec3f,
 	front_face : bool,
-	obj : Sphere,
+
+	color : vec3f,
+	material : f32,
+	fuzz : f32,
+	eta : f32,
+	emissionColor : vec3f,
 }
 
 @group(0) @binding(0) var<uniform> screenDims: vec3<f32>;
-@group(0) @binding(1) var<storage, read> hittables: array<Sphere>;
-@group(0) @binding(2) var<storage, read_write> framebuffer: array<vec4f>;
+@group(0) @binding(1) var<storage, read> sphere_objs: array<Sphere>;
+@group(0) @binding(2) var<storage, read> quad_objs: array<Quad>;
+@group(0) @binding(3) var<storage, read_write> framebuffer: array<vec4f>;
+
+var<private> NUM_SPHERES : i32;
+var<private> NUM_QUADS : i32;
 
 var<private> hitRec : HitRecord;
 var<private> cam : Camera;
@@ -70,6 +91,7 @@ fn hash(n : f32) -> f32
 }
 
 // var<private> K1 = vec2f(23.14069263277926, 2.665144142690225);
+// https://www.shadertoy.com/view/XlGcRh
 fn rand2D() -> f32
 {
 	randState = randState * 747796405 + 2891336453;
@@ -133,7 +155,60 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
 	{
 		hitRec.normal = -hitRec.normal;
 	}
-	hitRec.obj = sphere;
+
+	hitRec.color = sphere.color;
+	hitRec.material = sphere.material;
+	hitRec.fuzz = sphere.fuzz;
+	hitRec.eta = sphere.eta;
+	hitRec.emissionColor = sphere.emissionColor;
+	// hitRec.obj = sphere;
+
+	return true;
+}
+
+fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
+
+	if(dot(ray.dir, quad.normal) > 0)
+	{
+		return false;
+	}
+
+	let denom = dot(quad.normal, ray.dir);
+
+	// No hit if the ray is paraller to the plane
+	if(abs(denom) < 1e-8) {
+		return false;
+	}
+
+	let t = (quad.D - dot(quad.normal, ray.orig)) / denom;
+	if(t <= tmin || t >= tmax) {
+		return false;
+	}
+
+	// determine if hit point lies within quarilateral
+	let intersection = at(ray, t);
+	let planar_hitpt_vector = intersection - quad.Q;
+	let alpha = dot(quad.w, cross(planar_hitpt_vector, quad.v));
+	let beta = dot(quad.w, cross(quad.u, planar_hitpt_vector));
+
+	if(alpha < 0 || 1 < alpha || beta < 0 || 1 < beta) {
+		return false;
+	}
+
+	hitRec.t = t;
+	hitRec.p = intersection;
+	hitRec.normal = quad.normal;
+	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
+	if(hitRec.front_face == false)
+	{
+		hitRec.normal = -hitRec.normal;
+	}
+
+	hitRec.color = quad.color;
+	hitRec.material = quad.material;
+	hitRec.fuzz = quad.fuzz;
+	hitRec.eta = quad.eta;
+	hitRec.emissionColor = quad.emissionColor;
 
 	return true;
 }
@@ -180,7 +255,7 @@ fn reflectance(cosine : f32, ref_idx : f32) -> f32 {
 fn material_scatter(ray_in : Ray) -> Ray {
 
 	var scattered = Ray(vec3f(0), vec3f(0));
-	if(hitRec.obj.material == LAMBERTIAN)
+	if(hitRec.material == LAMBERTIAN)
 	{
 		var scatter_dir = random_on_hemisphere(hitRec.normal);
 		if(near_zero(scatter_dir))
@@ -190,15 +265,15 @@ fn material_scatter(ray_in : Ray) -> Ray {
 		scattered = Ray(hitRec.p, scatter_dir);
 	}
 
-	else if(hitRec.obj.material == MIRROR)
+	else if(hitRec.material == MIRROR)
 	{
 		var reflected = reflect(normalize(ray_in.dir), hitRec.normal);
-		scattered = Ray(hitRec.p, reflected + hitRec.obj.fuzz * random_on_hemisphere(hitRec.normal));
+		scattered = Ray(hitRec.p, reflected + hitRec.fuzz * random_on_hemisphere(hitRec.normal));
 	}
 
-	else if(hitRec.obj.material == GLASS)
+	else if(hitRec.material == GLASS)
 	{
-		var ir = hitRec.obj.eta;
+		var ir = hitRec.eta;
 		if(hitRec.front_face == true) {
 			ir = (1.0 / ir);
 		}
@@ -221,7 +296,7 @@ fn material_scatter(ray_in : Ray) -> Ray {
 	return scattered;
 }
 
-// var<private> background_color = vec3f(0.1, 0.7, 0.88);
+// var<private> background_color = vec3f(0.3, 0.7, 0.88);
 var<private> background_color = vec3f(0, 0, 0);
 fn ray_color(ray : Ray) -> vec3f {
 
@@ -240,8 +315,8 @@ fn ray_color(ray : Ray) -> vec3f {
 			break;
 		}
 
-		acc_light += hitRec.obj.emissionColor * acc_color;
-		acc_color *= hitRec.obj.color;
+		acc_light += hitRec.emissionColor * acc_color;
+		acc_color *= hitRec.color;
 
 		curRay = material_scatter(curRay);
 	}
@@ -255,9 +330,19 @@ fn hit(ray : Ray) -> bool
 	var closest_so_far = MAX_FLOAT;
 	var hit_anything = false;
 
-	for(var i = 0; i < NUM_OBJECTS; i++)
+	for(var i = 0; i < NUM_SPHERES; i++)
 	{
-		if(hit_sphere(hittables[i], 0.0001, closest_so_far, ray))
+		if(hit_sphere(sphere_objs[i], 0.0001, closest_so_far, ray))
+		{
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+			// return hit_anything;
+		}
+	}
+
+	for(var i = 0; i < NUM_QUADS; i++)
+	{
+		if(hit_quad(quad_objs[i], 0.0001, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -304,29 +389,27 @@ fn camera_init(lookfrom : vec3f, lookat : vec3f, up : vec3f, vfov : f32, apertur
 }
 
 fn camera_get_ray(s : f32, t : f32) -> Ray {
-	let rd = cam.lensRadius * random_in_unit_disk();
-	let offset = cam.u * rd.x + cam.v * rd.y;
+	// let rd = cam.lensRadius * random_in_unit_disk();
+	// let offset = cam.u * rd.x + cam.v * rd.y;
 
 	return Ray(
-				cam.center + offset,
-				cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center - offset
+				// cam.center + offset,
+				// cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center - offset
+				cam.center,
+				cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center
 			);
 }
  
-@compute @workgroup_size(64, 1, 1) fn computeSomething(
-	@builtin(workgroup_id) workgroup_id : vec3<u32>,
-    @builtin(local_invocation_id) local_invocation_id : vec3<u32>,
-    // @builtin(global_invocation_id) global_invocation_id : vec3<u32>,
-    @builtin(local_invocation_index) local_invocation_index: u32,
-    @builtin(num_workgroups) num_workgroups: vec3<u32>) {
-
+@compute @workgroup_size(64, 1, 1) fn computeSomething(@builtin(workgroup_id) workgroup_id : vec3<u32>, @builtin(local_invocation_id) local_invocation_id : vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
+	
 	let workgroup_index = workgroup_id.x + workgroup_id.y * num_workgroups.x + workgroup_id.z * num_workgroups.x * num_workgroups.y;
 	let i = workgroup_index * 64 + local_invocation_index;
 
 	let fragCoord = vec3f(f32(i) % screenDims.x, f32(i) / screenDims.x, 1);
 
 	// var lookfrom = vec3f(2, 4, 5.5);
-	var lookfrom = vec3f(2, 6, 8);
+	// var lookfrom = vec3f(2, 6, 8);
+	var lookfrom = vec3f(0, 0, 3.7);
 	if(ROTATION)
 	{
 		let angle = screenDims.z / 2.0;
@@ -338,15 +421,19 @@ fn camera_get_ray(s : f32, t : f32) -> Ray {
 		lookfrom = (rotationMatrix * vec4f(lookfrom, 1.0)).xyz;
 	}
 
+	// var lookat = vec3f(1.5, 0, -3);
+	var lookat = vec3f(0, 0, 0);
 	camera_init(
 		lookfrom,
-		vec3f(1.5, 0, -3),
+		lookat,
 		vec3f(0, 1, 0),
 		60.0,
 		0.0,
 		1
 	);
 
+	NUM_SPHERES = i32(arrayLength(&sphere_objs));
+	NUM_QUADS = i32(arrayLength(&quad_objs));
 	coords = fragCoord.xyz;
 	// randState = vec2(hash(fragCoord.x), hash(fragCoord.y));
 	randState = i;
@@ -354,5 +441,3 @@ fn camera_get_ray(s : f32, t : f32) -> Ray {
 	var fragColor = antialiased_color();
 	framebuffer[i] = vec4f(fragColor.xyz, 1.0);
 }
-
-`;
