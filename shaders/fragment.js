@@ -13,6 +13,13 @@ fn get2Dfrom1D(pos: vec2f) -> u32 {
 	let t2 = sphere_objs[0];
 	let t3 = quad_objs[0];
 
-	return vec4f(framebuffer[i]);
+	let color = framebuffer[i];
+
+	if(screenDims[3] == 1)
+	{
+		framebuffer[i] = vec4f(0);
+	}
+	
+	return vec4f(color);
   }
 `;

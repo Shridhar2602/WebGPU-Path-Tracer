@@ -1,7 +1,8 @@
 import {GUI} from 'https://threejsfundamentals.org/threejs/../3rdparty/dat.gui.module.js';
-import { vec3 } from 'https://cdn.skypack.dev/gl-matrix';
+import { vec3, mat4 } from 'https://cdn.skypack.dev/gl-matrix';
 import {VS} from './shaders/vertex.js';
 import {FS} from './shaders/fragment.js';
+import { Camera } from './lib/camera.js';
 // import {CS} from './shaders/compute.js';
 
 // Initializing WebGPU (https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html)
@@ -49,33 +50,44 @@ async function main(device) {
 	stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
 	document.body.appendChild( stats.dom );
   
+	var str_common = await loadTextfile('./shaders/common.wgsl');
 	var str_compute = await loadTextfile('./shaders/compute.wgsl');
 	// str_compute = str_compute.text();
 
 	// creating shader module 
 	const module = device.createShaderModule({
 	  label: 'Vertex + Fragment Shaders',
-	  code: VS + str_compute + FS,
+	  code: VS + str_common + str_compute + FS,
 	});
 
 	const WIDTH = canvas.clientWidth;
 	const HEIGHT = canvas.clientHeight;
 
+	const camera = new Camera(canvas);
+
 	// Setting uniforms
-	var screenDims = new Float32Array([WIDTH, HEIGHT, 0]);
+	var screenDims = new Float32Array([WIDTH, HEIGHT, 1, 0]);
 	const dimsBuffer = device.createBuffer({
-		  label: 'screen dims buffer',
+		label: 'screen dims buffer',
 		size: screenDims.byteLength,
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 	});
 	device.queue.writeBuffer(dimsBuffer, 0, screenDims);
+
+	// Setting view matrix 
+	const viewMatrixBuffer = device.createBuffer({
+		label: 'viewMatrix buffer',
+	  	size: camera.viewMatrix.byteLength,
+	  	usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  	});
+  	device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);
 	
 	// setting sphere data
 	var spheres = create_spheres();
 	const sphereBuffer = device.createBuffer({
 		label: 'spheres buffer',
-		  size: spheres.byteLength,
-		  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+		size: spheres.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 	});
 	device.queue.writeBuffer(sphereBuffer, 0, spheres);
 
@@ -83,8 +95,8 @@ async function main(device) {
 	var quads = create_quads();
 	const quadBuffer = device.createBuffer({
 		label: 'quads buffer',
-		  size: quads.byteLength,
-		  usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+		size: quads.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 	});
 	device.queue.writeBuffer(quadBuffer, 0, quads);
 
@@ -108,22 +120,6 @@ async function main(device) {
 		},
 	});
 
-	// // Buffer to store agent info
-	// var input = create_agents_circleIn(NUM_AGENTS, WIDTH, HEIGHT);
-  	// const agentBuffer = device.createBuffer({
-    // 	label: 'agent buffer',
-   	// 	size: input.byteLength,
-    // 	usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-  	// });
-  	// device.queue.writeBuffer(agentBuffer, 0, input);
-
-  	// // create a buffer on the GPU to get a copy of the results
-  	// const resultBuffer = device.createBuffer({
-  	//   label: 'result buffer',
-  	//   size: input.byteLength,
-  	//   usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-  	// });
-
 	// Setup a bindGroup to tell the shader which
   	// buffer to use for the computation
   	const bindGroupCompute = device.createBindGroup({
@@ -134,6 +130,7 @@ async function main(device) {
 		{ binding: 1, resource: {buffer : sphereBuffer}},
 		{ binding: 2, resource: {buffer : quadBuffer}},
 		{ binding: 3, resource: {buffer : frameBuffer}},
+		{ binding: 4, resource: {buffer : viewMatrixBuffer}}
   	  ],
   	});
 
@@ -190,8 +187,11 @@ async function main(device) {
 	  ],
 	};
 
+	camera.set_camera([0, 0, 2.7], [0, 0, 0], [0, 1, 0]);
+
 	function render()
 	{
+		device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);
 		// ============================== COMPUTE PASS ================================
 		var encoder = device.createCommandEncoder({label: 'slime encoder'});
 		var pass = encoder.beginComputePass({label: 'slime compute pass'});
@@ -226,12 +226,25 @@ async function main(device) {
 	}
 
 	const deltaTime = 1/60;
+	var frame = 0.0;
 	async function render2(time) {
-		time *= 0.002;
+		time = 0.001;
+		frame += 1.0;
 		stats.begin();
 
-		screenDims[2] = time;
+		if(frame % 1000 == 0)
+			console.log(frame);
+
+		screenDims[2] = frame;
+		screenDims[3] = camera.MOVING;
+
+		if(camera.MOVING)
+		{
+			frame = 0;
+		}
+
 		device.queue.writeBuffer(dimsBuffer, 0, screenDims);
+		device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);
 
 		// ============================== COMPUTE PASS ================================
 		var encoder = device.createCommandEncoder({label: 'compute encoder'});
@@ -239,7 +252,6 @@ async function main(device) {
 		pass.setPipeline(computePipeline);
 		pass.setBindGroup(0, bindGroupCompute);
 		var workGroupsNeeded = (WIDTH * HEIGHT) / 64;
-		var temp = Math.cbrt(workGroupsNeeded);
 		// pass.dispatchWorkgroups(temp, temp, temp);
 		pass.dispatchWorkgroups(workGroupsNeeded + 1, 1, 1);
 		pass.end();
@@ -279,7 +291,7 @@ async function main(device) {
 		canvas.width = Math.max(1, Math.min(width, device.limits.maxTextureDimension2D));
 		canvas.height = Math.max(1, Math.min(height, device.limits.maxTextureDimension2D));
 		// re-render
-		render();
+		render2();
 	  }
 	});
 
@@ -301,10 +313,10 @@ function create_spheres() {
 	// hittable.push(sphere([-100, 0, 0],       1, [0, 0, 0],    0, 0,   0,    [0, 0, 0]));
 
 	// cornell spheres
-	hittable.push(sphere([-0.6, -0.75, 1.1],       0.25, [1, 1, 1],    0, 0,   1.1,    [0, 0, 0]));
-	hittable.push(sphere([0, -0.75, 0.5],       0.25, [1, 1, 1],    1, 0,   1.4,    [0, 0, 0]));
-	hittable.push(sphere([0.6, -0.75, 1.1],       0.25, [1, 1, 1],    0, 0,   1.04,    [0, 0, 0]));
-	hittable.push(sphere([0, -0, 1.4],       0.25, [1, 1, 1],    2, 0,   1.05,    [0, 0, 0]));
+	hittable.push(sphere([-0.5, -0.7, -0.6],       0.3, [1, 1, 1],    1, 0,   1.1,    [0, 0, 0]));
+	hittable.push(sphere([0.5, -0.7, 0.3],       0.3, [1, 1, 1],    0, 0,   2,    [0, 0, 0]));
+	// hittable.push(sphere([0.6, -0.75, 1],       0.25, [1, 1, 1],   0, 0,   1.04,    [0, 0, 0]));
+	// hittable.push(sphere([0, 0, -2],       0.1, [1, 0, 1],    0, 0,   1.06,    [0, 0, 0]));
 
 
 
@@ -315,7 +327,7 @@ function create_spheres() {
 	// hittable.push(sphere([-0.3, 1, 1],       1,   [0, 1, 0],     0,  0,   1,    [0, 0, 0]));
 	// hittable.push(sphere([-2, 0.67, 1.5],    0.7, [0, 1, 1],     0,  0,   1.5,  [0, 0, 0]));
 	// hittable.push(sphere([-3.2, 0.45, 1.6],  0.5, [1, 1, 1],     2,  1,   1.3,  [0, 0, 0]));
-	// hittable.push(sphere([-9, 12, -4],       6.5, [0, 0, 0],    0, 0,   1.5,    [6, 6, 6]));
+	// hittable.push(sphere([-9, 12, -4],       6.5, [0, 0, 0],    1, 0,   0,    [5, 5, 5]));
 
 	// SCENE - 1
 	// hittable.push([0, -200.5, 0, 200, 0.5, 0.5, 0.5, 0, 0.1,   1.5, 0, 0]);
@@ -347,16 +359,17 @@ function create_quads() {
 	// hittable.push(quad([-100, -100, 0],       [100, 100, 100],   [100, 100, 100],   [1, 1, 1], 0, 0, 0, [0, 0, 0])); //back
 
 	// cornell box
-	hittable.push(quad([-1, -1, 0],       [2, 0, 0],   [0, 2, 0],   [0.3, 0.3, 0.3], 0, 0, 0, [0, 0, 0])); //back
-	hittable.push(quad([-1, -1, 2],       [0, 0, -2],  [0, 2, 0],   [1, 0, 0], 0, 0, 0, [0, 0, 0])); // left
-	hittable.push(quad([1, -1, 0],        [0, 0, 2],  [0, 2, 0],   [0, 1, 0], 0, 0, 0, [0, 0, 0])); // right
-	hittable.push(quad([-0.25, 1, 0.75],  [0.5, 0, 0], [0, 0, 0.5], [0, 0, 0], 0, 0, 0, [20, 20, 20])); //light
-	hittable.push(quad([-1, 1, 0],        [2, 0, 0],   [0, 0, 2], 	[1, 1, 1], 0, 0, 0, [0, 0, 0])); //top
-	hittable.push(quad([1, -1, 0],       [-2, 0, 0],   [0, 0, 2], 	[1, 1, 1], 0, 0, 0, [0, 0, 0])); //bottom
-	hittable.push(quad([1, -1, 2],        [-2, 0, 0],   [0, 2, 0], 	[0, 0, 1], 0, 0, 0, [0, 0, 0])); //front
+	hittable.push(quad([-1, -1, -1],       [2, 0, 0],   [0, 2, 0],   [0.3, 0.3, 0.3], 0, 0, 0, [0, 0, 0])); //back
+	hittable.push(quad([-1, -1, 1],       [0, 0, -2],  [0, 2, 0],   [1, 0, 0], 0, 0, 0, [0, 0, 0])); // left
+	hittable.push(quad([1, -1, -1],        [0, 0, 2],  [0, 2, 0],   [0, 1, 0], 0, 0, 0, [0, 0, 0])); // right
+	hittable.push(quad([-0.35, 1, -0.3],  [0.7, 0, 0], [0, 0, 0.6], [0, 0, 0], 0, 0, 0, [13, 13, 13])); //light
+	hittable.push(quad([-1, 1, -1],        [2, 0, 0],   [0, 0, 2], 	[1, 1, 1], 0, 0, 0, [0, 0, 0])); //top
+	hittable.push(quad([1, -1, -1],       [-2, 0, 0],   [0, 0, 2], 	[1, 1, 1], 0, 0, 0, [0, 0, 0])); //bottom
+	hittable.push(quad([1, -1, 1],        [-2, 0, 0],   [0, 2, 0], 	[0, 0, 1], 0, 0, 0, [0, 0, 0])); //front
 	return new Float32Array(hittable.flat());
 }
 
+// returns a quadrilateral
 function quad(Q, u, v, color, material, eta, fuzz, emission) {
 	var n = vec3.create(), normal = vec3.create(), w = vec3.create(), D = 0;
 	vec3.cross(n, u, v);
@@ -375,62 +388,3 @@ function quad(Q, u, v, color, material, eta, fuzz, emission) {
 		emission[0], emission[1], emission[2], eta
 	];
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-	// for(var a = -5; a < 5; a++)
-	// {
-	// 	for(var b = -5; b < 5; b++)
-	// 	{
-	// 		var choose_mat = Math.random();
-	// 		var center = [a + 0.9 * Math.random(), 0/2, b + 0/9 * Math.random()];
-
-	// 		var p1 = center[0] - 4;
-	// 		var p2 = center[1] - 0.2;
-	// 		var p3 = center[2] - 0;
-	// 		var length = Math.sqrt(p1*p1 + p2*p2 + p3*p3);
-
-	// 		if(length > 0.9)
-	// 		{
-	// 			if(choose_mat < 0.8)
-	// 			{
-	// 				hittable.push([
-	// 					center[0], center[1], center[2], 
-	// 					0.2, 
-	// 					Math.random(), Math.random(), Math.random(),
-	// 					0, 1, 1, 0, 0
-	// 				]);
-	// 			}
-
-	// 			else if(choose_mat < 0.95)
-	// 			{
-	// 				hittable.push([
-	// 					center[0], center[1], center[2], 
-	// 					0.2, 
-	// 					0.5 + 0.5 * Math.random(), 0.5 + 0.5 * Math.random(), 0.5 + 0.5 * Math.random(),
-	// 					1, 0.5 + 0.5 * Math.random(), 1, 0, 0
-	// 				]);
-	// 			}
-
-	// 			else 
-	// 			{
-	// 				hittable.push([
-	// 					center[0], center[1], center[2], 
-	// 					0.2, 
-	// 					1, 1, 1,
-	// 					2, 1, 1.5, 0, 0
-	// 				]);
-	// 			}
-	// 		}
-	// 	}
-	// }

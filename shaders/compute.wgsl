@@ -1,108 +1,26 @@
-const PI = 3.1415926535897932385;
-const MAX_FLOAT = 999999999.999;
-const LAMBERTIAN = 0;
-const MIRROR = 1;
-const GLASS = 2;
-const NUM_SAMPLES = 500;
-const MAX_BOUNCES = 5;
-const ROTATION = true;
-
-// var<private> randState : vec2f;
-var<private> randState : u32;
-var<private> coords : vec3f;
-
-struct viewPort {
-	viewPortX : f32,
-	viewPortY : f32,
-	pixel_delta_u : vec3f,
-	pixel_delta_v : vec3f,
-}
-
-struct Camera {
-	center : vec3f,
-	u : vec3f,
-	v : vec3f,
-	w : vec3f,
-	lowerleftcorner : vec3f,
-	lensRadius : f32,
-	offset : vec3f,
-	horizontal : vec3f,
-	vertical : vec3f,
-}
-
-struct Ray {
-	orig : vec3f,
-	dir : vec3f,
-}
-
-struct Sphere {
-	center : vec3f,
-	r : f32,
-	color : vec3f,
-	material : f32,
-	fuzz : f32,
-	eta : f32,
-	emissionColor : vec3f,
-}
-
-struct Quad {
-	Q : vec3f,
-	u : vec3f,
-	v : vec3f,
-	normal : vec3f,
-	D : f32,
-	w : vec3f, 
-	material : f32,
-
-	color : vec3f,
-	eta : f32,
-	emissionColor : vec3f,
-	fuzz : f32,
-}
-
-struct HitRecord {
-	p : vec3f,
-	t : f32,
-	normal : vec3f,
-	front_face : bool,
-
-	color : vec3f,
-	material : f32,
-	fuzz : f32,
-	eta : f32,
-	emissionColor : vec3f,
-}
-
-@group(0) @binding(0) var<uniform> screenDims: vec3<f32>;
+@group(0) @binding(0) var<uniform> screenDims: vec4<f32>;
 @group(0) @binding(1) var<storage, read> sphere_objs: array<Sphere>;
 @group(0) @binding(2) var<storage, read> quad_objs: array<Quad>;
 @group(0) @binding(3) var<storage, read_write> framebuffer: array<vec4f>;
+@group(0) @binding(4) var<uniform> viewMatrix: mat4x4f;
 
 var<private> NUM_SPHERES : i32;
 var<private> NUM_QUADS : i32;
+
+var<private> randState : u32 = 0u;
+var<private> coords : vec3f;
 
 var<private> hitRec : HitRecord;
 var<private> cam : Camera;
 var<private> vp : viewPort;
 
-fn hash(n : f32) -> f32 
-{
-    return fract(sin(n)*43758.54554213);
-}
-
-// var<private> K1 = vec2f(23.14069263277926, 2.665144142690225);
+// PCG prng
 // https://www.shadertoy.com/view/XlGcRh
 fn rand2D() -> f32
 {
-	randState = randState * 747796405 + 2891336453;
-	var word = ((randState >> ((randState >> 28) + 4)) ^ randState) * 277803737;
-	word = (word >> 22)^word;
-	return f32(word) / 4294967295.0;
-
-	// randState.x = fract( cos( dot(randState,K1) ) * 12345.6789 );
-	// randState.y = fract( cos( dot(randState,K1) ) * 12345.6789 );
-    
-    // return randState.x;
+	randState = randState * 747796405u + 2891336453u;
+	var word : u32 = ((randState >> ((randState >> 28u) + 4u)) ^ randState) * 277803737u;
+	return f32((word >> 22u)^word) / 4294967295;
 }
 
 fn randNormalDist() -> f32 {
@@ -161,7 +79,6 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
 	hitRec.fuzz = sphere.fuzz;
 	hitRec.eta = sphere.eta;
 	hitRec.emissionColor = sphere.emissionColor;
-	// hitRec.obj = sphere;
 
 	return true;
 }
@@ -296,21 +213,21 @@ fn material_scatter(ray_in : Ray) -> Ray {
 	return scattered;
 }
 
-// var<private> background_color = vec3f(0.3, 0.7, 0.88);
-var<private> background_color = vec3f(0, 0, 0);
+var<private> background_color = vec3f(0.1, 0.7, 0.88);
+// var<private> background_color = vec3f(19/255.0, 24/255.0, 98/255.0);
+// var<private> background_color = vec3f(0, 0, 0);
 fn ray_color(ray : Ray) -> vec3f {
 
 	var curRay = ray;
 	var acc_light = vec3f(0);
 	var acc_color = vec3f(1);
-	let a = 0.4 * (1 - (coords.y / screenDims.y));
+	// let a = 0.4 * (1 - (coords.y / screenDims.y));
 
 	for(var i = 0; i < MAX_BOUNCES; i++)
 	{
 		if(hit(curRay) == false)
 		{
-			// return acc_color * (1 - a) * vec3f(1) + a * background_color;
-			// return acc_color * vec3f(0, 0, 0);
+			// return acc_color * ((1 - a) * vec3f(1) + a * background_color);
 			acc_light += (1 * background_color) * acc_color;
 			break;
 		}
@@ -326,7 +243,6 @@ fn ray_color(ray : Ray) -> vec3f {
 
 fn hit(ray : Ray) -> bool
 {
-	// var temp = HitRecord(vec3f(0), 0, vec3f(0), false, vec3f(0));
 	var closest_so_far = MAX_FLOAT;
 	var hit_anything = false;
 
@@ -336,7 +252,6 @@ fn hit(ray : Ray) -> bool
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
-			// return hit_anything;
 		}
 	}
 
@@ -346,7 +261,6 @@ fn hit(ray : Ray) -> bool
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
-			// return hit_anything;
 		}
 	}
 
@@ -358,7 +272,8 @@ fn antialiased_color() -> vec3f {
 	var pixColor = vec3f(0, 0, 0);
 	for(var i = 0.0; i < NUM_SAMPLES; i += 1.0)
 	{
-		let ray = camera_get_ray((coords.x + rand2D()) / screenDims.x, 1 - (coords.y + rand2D()) / screenDims.y);
+		// let ray = camera_get_ray2((coords.x + rand2D()) / screenDims.x, 1 - (coords.y + rand2D()) / screenDims.y);
+		let ray = camera_get_ray2((screenDims.x / screenDims.y) * 2 * (coords.x + rand2D()) / screenDims.x - 1, -1 * (2 * (coords.y + rand2D()) / screenDims.y - 1));
 		pixColor += ray_color(ray);
 	}
 
@@ -368,76 +283,51 @@ fn antialiased_color() -> vec3f {
 	return pixColor.xyz;
 }
 
-fn camera_init(lookfrom : vec3f, lookat : vec3f, up : vec3f, vfov : f32, aperture : f32, focusDist : f32) {
-	
-	cam.lensRadius = aperture / 2.0;
+var<private> fovFactor : f32;
+fn camera_get_ray2(s : f32, t : f32) -> Ray {
 
-	vp.viewPortY = 2 * tan(vfov * (PI / 180) / 2);
-	vp.viewPortX = vp.viewPortY * (screenDims.x / screenDims.y);
+	let origin = (viewMatrix * vec4f(0, 0, 0, 1)).xyz;
+	let dir = (viewMatrix * vec4f(vec3f(s, t, -fovFactor), 0)).xyz;		// not normalized
+	var ray = Ray(origin, dir);
 
-	cam.center = lookfrom;
-	cam.w = normalize(lookfrom - lookat);
-	cam.u = normalize(cross(up, cam.w));
-	cam.v = cross(cam.w, cam.u);
-
-	cam.lowerleftcorner = cam.center 	- (vp.viewPortX / 2) * focusDist * cam.u 
-										- (vp.viewPortY / 2) * focusDist * cam.v 
-										- focusDist * cam.w;
-
-	cam.horizontal = vp.viewPortX * focusDist * cam.u;
-	cam.vertical = vp.viewPortY * focusDist * cam.v;
-}
-
-fn camera_get_ray(s : f32, t : f32) -> Ray {
-	// let rd = cam.lensRadius * random_in_unit_disk();
-	// let offset = cam.u * rd.x + cam.v * rd.y;
-
-	return Ray(
-				// cam.center + offset,
-				// cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center - offset
-				cam.center,
-				cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center
-			);
+	return ray;
 }
  
 @compute @workgroup_size(64, 1, 1) fn computeSomething(@builtin(workgroup_id) workgroup_id : vec3<u32>, @builtin(local_invocation_id) local_invocation_id : vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
 	
 	let workgroup_index = workgroup_id.x + workgroup_id.y * num_workgroups.x + workgroup_id.z * num_workgroups.x * num_workgroups.y;
 	let i = workgroup_index * 64 + local_invocation_index;
-
 	let fragCoord = vec3f(f32(i) % screenDims.x, f32(i) / screenDims.x, 1);
 
-	// var lookfrom = vec3f(2, 4, 5.5);
-	// var lookfrom = vec3f(2, 6, 8);
-	var lookfrom = vec3f(0, 0, 3.7);
-	if(ROTATION)
-	{
-		let angle = screenDims.z / 2.0;
-		let rotationMatrix = mat4x4f(cos(angle), 0.0, sin(angle), 0.0,
-										  0.0, 1.0,        0.0, 0.0,
-								 -sin(angle),  0.0, cos(angle), 0.0,
-										 0.0,  0.0,        0.0, 1.0);
-	
-		lookfrom = (rotationMatrix * vec4f(lookfrom, 1.0)).xyz;
-	}
+	fovFactor = 1 / tan(60 * (PI / 180) / 2);
 
+	// var lookfrom = vec3f(2, 6, 8);
 	// var lookat = vec3f(1.5, 0, -3);
-	var lookat = vec3f(0, 0, 0);
-	camera_init(
-		lookfrom,
-		lookat,
-		vec3f(0, 1, 0),
-		60.0,
-		0.0,
-		1
-	);
+	// var lookfrom = vec3f(0, 0, 3.7);
+	// var lookat = vec3f(0, 0, 0);
+	// camera_init(
+	// 	lookfrom,
+	// 	lookat,
+	// 	vec3f(0, 1, 0),
+	// 	60.0,
+	// 	0.0,
+	// 	1
+	// );
 
 	NUM_SPHERES = i32(arrayLength(&sphere_objs));
 	NUM_QUADS = i32(arrayLength(&quad_objs));
 	coords = fragCoord.xyz;
-	// randState = vec2(hash(fragCoord.x), hash(fragCoord.y));
-	randState = i;
+
+	randState = i + u32(screenDims.z) * 719393;
 
 	var fragColor = antialiased_color();
-	framebuffer[i] = vec4f(fragColor.xyz, 1.0);
+	var accFragColor = fragColor.xyz;
+
+	if(screenDims[3] == 0)
+	{
+		let weight = 1.0 / (screenDims.z + 1);
+		accFragColor = framebuffer[i].xyz * (1 - weight) + fragColor * weight;
+	}
+
+	framebuffer[i] = vec4f(accFragColor.xyz, 1.0);
 }
