@@ -314,7 +314,7 @@ function create_spheres() {
 
 	// cornell spheres
 	hittable.push(sphere([-0.5, -0.7, -0.6],       0.3, [1, 1, 1],    1, 0,   1.1,    [0, 0, 0]));
-	hittable.push(sphere([0.5, -0.7, 0.3],       0.3, [1, 1, 1],    0, 0,   2,    [0, 0, 0]));
+	hittable.push(sphere([0.5, -0.7, 0.3],       0.3, [1, 1, 1],    0, 0,   0,    [0, 0, 0]));
 	// hittable.push(sphere([0.6, -0.75, 1],       0.25, [1, 1, 1],   0, 0,   1.04,    [0, 0, 0]));
 	// hittable.push(sphere([0, 0, -2],       0.1, [1, 0, 1],    0, 0,   1.06,    [0, 0, 0]));
 

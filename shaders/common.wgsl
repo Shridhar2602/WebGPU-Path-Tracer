@@ -3,8 +3,8 @@ const MAX_FLOAT = 999999999.999;
 const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
-const NUM_SAMPLES = 5;
-const MAX_BOUNCES = 8;
+const NUM_SAMPLES = 2;
+const MAX_BOUNCES = 5;
 const ROTATION = false;
 
 struct viewPort {
