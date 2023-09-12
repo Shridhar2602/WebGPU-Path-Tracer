@@ -16,7 +16,7 @@ var<private> vp : viewPort;
 
 // PCG prng
 // https://www.shadertoy.com/view/XlGcRh
-fn rand2D() -> f32
+fn rand2D() -> f32 
 {
 	randState = randState * 747796405u + 2891336453u;
 	var word : u32 = ((randState >> ((randState >> 28u) + 4u)) ^ randState) * 277803737u;
