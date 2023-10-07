@@ -3,8 +3,8 @@ const MAX_FLOAT = 999999999.999;
 const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
-const NUM_SAMPLES = 2;
-const MAX_BOUNCES = 5;
+const NUM_SAMPLES = 1;
+const MAX_BOUNCES = 3;
 const ROTATION = false;
 
 struct viewPort {
@@ -27,33 +27,55 @@ struct Camera {
 }
 
 struct Ray {
-	orig : vec3f,
+	origin : vec3f,
 	dir : vec3f,
+}
+
+struct Material {
+	color : vec3f,
+	emissionColor : vec3f,
+	fuzz : f32,
+	eta : f32,
+	material_type : f32,
+}
+
+struct modelTransform {
+	modelMatrix : mat4x4f,
+	invModelMatrix : mat4x4f
 }
 
 struct Sphere {
 	center : vec3f,
 	r : f32,
-	color : vec3f,
-	material : f32,
-	fuzz : f32,
-	eta : f32,
-	emissionColor : vec3f,
+	id : f32,
+	material_id : f32
 }
 
 struct Quad {
 	Q : vec3f,
 	u : vec3f,
 	v : vec3f,
+	id : f32,
 	normal : vec3f,
 	D : f32,
 	w : vec3f, 
-	material : f32,
+	material_id : f32,
+}
 
-	color : vec3f,
-	eta : f32,
-	emissionColor : vec3f,
-	fuzz : f32,
+struct Triangle {
+	A : vec3f,
+	B : vec3f,
+	C : vec3f,
+	normalA : vec3f,
+	normalB : vec3f,
+	normalC : vec3f,
+}
+
+struct Mesh {
+	num_triangles : i32,
+	offset : i32,
+	id : i32,
+	material_id : i32
 }
 
 struct HitRecord {
@@ -61,12 +83,7 @@ struct HitRecord {
 	t : f32,
 	normal : vec3f,
 	front_face : bool,
-
-	color : vec3f,
-	material : f32,
-	fuzz : f32,
-	eta : f32,
-	emissionColor : vec3f,
+	material : Material,
 }
 
 

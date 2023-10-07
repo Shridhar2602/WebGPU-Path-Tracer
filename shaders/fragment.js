@@ -12,6 +12,7 @@ fn get2Dfrom1D(pos: vec2f) -> u32 {
 	let i = get2Dfrom1D(fragCoord.xy);
 	let t2 = sphere_objs[0];
 	let t3 = quad_objs[0];
+	// let t4 = tri_objs[0];
 
 	let color = framebuffer[i];
 

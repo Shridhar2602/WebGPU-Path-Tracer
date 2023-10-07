@@ -3,6 +3,8 @@ import { vec3, mat4 } from 'https://cdn.skypack.dev/gl-matrix';
 import {VS} from './shaders/vertex.js';
 import {FS} from './shaders/fragment.js';
 import { Camera } from './lib/camera.js';
+import { Primitives } from './lib/primitives.js';
+import { Scene } from './lib/scene.js';
 // import {CS} from './shaders/compute.js';
 
 // Initializing WebGPU (https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html)
@@ -65,6 +67,9 @@ async function main(device) {
 
 	const camera = new Camera(canvas);
 
+	const scene = new Scene();
+
+
 	// Setting uniforms
 	var screenDims = new Float32Array([WIDTH, HEIGHT, 1, 0]);
 	const dimsBuffer = device.createBuffer({
@@ -81,9 +86,29 @@ async function main(device) {
 	  	usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   	});
   	device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);
+
+	// setting triangle data
+	await scene.init_mesh_data();
+	scene.create_meshes();
+
+	var triangles = scene.get_triangles();
+	const triBuffer = device.createBuffer({
+		label: 'tri buffer',
+		size: triangles.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+	device.queue.writeBuffer(triBuffer, 0, triangles);
+
+	var meshes = scene.get_meshes();
+	const meshBuffer = device.createBuffer({
+		label: 'mesh buffer',
+		size: meshes.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+	device.queue.writeBuffer(meshBuffer, 0, meshes);
 	
 	// setting sphere data
-	var spheres = create_spheres();
+	var spheres = scene.get_spheres();
 	const sphereBuffer = device.createBuffer({
 		label: 'spheres buffer',
 		size: spheres.byteLength,
@@ -92,13 +117,31 @@ async function main(device) {
 	device.queue.writeBuffer(sphereBuffer, 0, spheres);
 
 	// setting quadrilateral data
-	var quads = create_quads();
+	var quads = scene.get_quads();
 	const quadBuffer = device.createBuffer({
 		label: 'quads buffer',
 		size: quads.byteLength,
 		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 	});
 	device.queue.writeBuffer(quadBuffer, 0, quads);
+
+	// setting material data
+	var materials = scene.get_materials();
+	const materialBuffer = device.createBuffer({
+		label: 'material buffer',
+		size: materials.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+	device.queue.writeBuffer(materialBuffer, 0, materials);
+
+	// setting transform data
+	var transforms = scene.get_transforms();
+	const transformBuffer = device.createBuffer({
+		label: 'transform buffer',
+		size: transforms.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+	device.queue.writeBuffer(transformBuffer, 0, transforms);
 
 	// A screen sized buffer to store the rgb values
 	var frame = new Float32Array(WIDTH * HEIGHT * 4).fill(0);
@@ -130,7 +173,15 @@ async function main(device) {
 		{ binding: 1, resource: {buffer : sphereBuffer}},
 		{ binding: 2, resource: {buffer : quadBuffer}},
 		{ binding: 3, resource: {buffer : frameBuffer}},
-		{ binding: 4, resource: {buffer : viewMatrixBuffer}}
+		{ binding: 4, resource: {buffer : viewMatrixBuffer}},
+		{ binding: 5, resource: {buffer : triBuffer}},
+		{ binding: 6, resource: {buffer : meshBuffer}},
+		{ binding: 7, resource: {buffer : transformBuffer}},
+		{ binding: 8, resource: {buffer : materialBuffer}},
+
+		// { binding: 5, resource: {buffer : triBuffer}},
+		// { binding: 6, resource: {buffer : modelMatrixBuffer}},
+		// { binding: 7, resource: {buffer : invModelMatrixBuffer}},
   	  ],
   	});
 
@@ -172,6 +223,7 @@ async function main(device) {
 		  { binding: 1, resource: {buffer : sphereBuffer}},
 		  { binding: 2, resource: {buffer : quadBuffer}},
 		  { binding: 3, resource: {buffer : frameBuffer}},
+		//   { binding: 5, resource: {buffer : triBuffer}},
 		],
 	});
 
@@ -187,7 +239,8 @@ async function main(device) {
 	  ],
 	};
 
-	camera.set_camera([0, 0, 2.7], [0, 0, 0], [0, 1, 0]);
+	// eye, center, up
+	camera.set_camera([0, 0, 2.5], [0, 0, 0], [0, 1, 0]);
 
 	function render()
 	{
@@ -304,87 +357,3 @@ function fail(msg) {
 }
 
 start();
-
-function create_spheres() {
-
-	var hittable = [];
-
-	// dummy sphere
-	// hittable.push(sphere([-100, 0, 0],       1, [0, 0, 0],    0, 0,   0,    [0, 0, 0]));
-
-	// cornell spheres
-	hittable.push(sphere([-0.5, -0.7, -0.6],       0.3, [1, 1, 1],    1, 0,   1.1,    [0, 0, 0]));
-	hittable.push(sphere([0.5, -0.7, 0.3],       0.3, [1, 1, 1],    0, 0,   0,    [0, 0, 0]));
-	// hittable.push(sphere([0.6, -0.75, 1],       0.25, [1, 1, 1],   0, 0,   1.04,    [0, 0, 0]));
-	// hittable.push(sphere([0, 0, -2],       0.1, [1, 0, 1],    0, 0,   1.06,    [0, 0, 0]));
-
-
-
-	// SCENE - 2
-	// hittable.push(sphere([0, -100, 0], 100, [0.4, 0, 0.4],       0, 0.1,  1.5, [0, 0, 0]));
-	// hittable.push(sphere([5, 1.9, -2],       2,   [1, 1, 1],     0,  0,   1,    [0, 0, 0]));
-	// hittable.push(sphere([2, 1.47, 0],       1.5, [1, 0, 0],     0,  0,   1.5,  [0, 0, 0]));
-	// hittable.push(sphere([-0.3, 1, 1],       1,   [0, 1, 0],     0,  0,   1,    [0, 0, 0]));
-	// hittable.push(sphere([-2, 0.67, 1.5],    0.7, [0, 1, 1],     0,  0,   1.5,  [0, 0, 0]));
-	// hittable.push(sphere([-3.2, 0.45, 1.6],  0.5, [1, 1, 1],     2,  1,   1.3,  [0, 0, 0]));
-	// hittable.push(sphere([-9, 12, -4],       6.5, [0, 0, 0],    1, 0,   0,    [5, 5, 5]));
-
-	// SCENE - 1
-	// hittable.push([0, -200.5, 0, 200, 0.5, 0.5, 0.5, 0, 0.1,   1.5, 0, 0]);
-	// hittable.push([0, 0, 0,      0.5, 1, 0, 0,     , 1,  1,   1, 0, 0]);
-	// hittable.push([1.1, 0.1, 0,    0.6, 0.7, 0.7, 0.7,     1,  0,   1, 0, 0]);
-	// hittable.push([2.4, 0.2, 0,    0.7, 1, 0, 1,           0,  0,   1.5, 0, 0]);
-	// hittable.push([-1.1, 0.1, 0,    0.6, 0.7, 0.7, 0.7,    1,  0,   1, 0, 0]);
-	// hittable.push([-2.4, 0.2, 0,    0.7, 1, 1, 0,          0,  0,   1.5, 0, 0]);
-	// hittable.push([0, 0.1, 1.1,     0.6, 0.7, 0.7, 0.7 ,   1,  0,   1.5, 0, 0]);
-	// hittable.push([0, 0.2, 2.4,     0.7, 0, 1, 0,          0,  0,   1.5, 0, 0]);
-	// hittable.push([0, 0.1, -1.1,    0.6, 0.7, 0.7, 0.7 ,   1,  0,   1.5, 0, 0]);
-	// hittable.push([0, 0.2, -2.4,    0.7, 0, 1, 1,          0,  0,   1.5, 0, 0]);
-
-	return new Float32Array(hittable.flat());
-}
-
-function sphere(pos, r, color, material, eta, fuzz, emission) {
-	return [
-		pos[0], pos[1], pos[2], r,
-		color[0], color[1], color[2], material, 
-		eta, fuzz, -1, -1,
-		emission[0], emission[1], emission[2], -1
-	];
-}
-
-function create_quads() {
-	var hittable = [];
-
-	// hittable.push(quad([-100, -100, 0],       [100, 100, 100],   [100, 100, 100],   [1, 1, 1], 0, 0, 0, [0, 0, 0])); //back
-
-	// cornell box
-	hittable.push(quad([-1, -1, -1],       [2, 0, 0],   [0, 2, 0],   [0.3, 0.3, 0.3], 0, 0, 0, [0, 0, 0])); //back
-	hittable.push(quad([-1, -1, 1],       [0, 0, -2],  [0, 2, 0],   [1, 0, 0], 0, 0, 0, [0, 0, 0])); // left
-	hittable.push(quad([1, -1, -1],        [0, 0, 2],  [0, 2, 0],   [0, 1, 0], 0, 0, 0, [0, 0, 0])); // right
-	hittable.push(quad([-0.35, 1, -0.3],  [0.7, 0, 0], [0, 0, 0.6], [0, 0, 0], 0, 0, 0, [13, 13, 13])); //light
-	hittable.push(quad([-1, 1, -1],        [2, 0, 0],   [0, 0, 2], 	[1, 1, 1], 0, 0, 0, [0, 0, 0])); //top
-	hittable.push(quad([1, -1, -1],       [-2, 0, 0],   [0, 0, 2], 	[1, 1, 1], 0, 0, 0, [0, 0, 0])); //bottom
-	hittable.push(quad([1, -1, 1],        [-2, 0, 0],   [0, 2, 0], 	[0, 0, 1], 0, 0, 0, [0, 0, 0])); //front
-	return new Float32Array(hittable.flat());
-}
-
-// returns a quadrilateral
-function quad(Q, u, v, color, material, eta, fuzz, emission) {
-	var n = vec3.create(), normal = vec3.create(), w = vec3.create(), D = 0;
-	vec3.cross(n, u, v);
-	vec3.normalize(normal, n);
-	D = vec3.dot(normal, Q);
-	var temp = vec3.dot(n, n);
-	vec3.set(w, n[0] / temp, n[1] / temp, n[2] / temp);
-
-	return [
-		Q[0], Q[1], Q[2], -1,
-		u[0], u[1], u[2], -1,
-		v[0], v[1], v[2], -1,
-		normal[0], normal[1], normal[2], D,
-		w[0], w[1], w[2], material,
-		color[0], color[1], color[2], fuzz,
-		emission[0], emission[1], emission[2], eta
-	];
-}
