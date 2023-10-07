@@ -139,11 +139,12 @@ fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
 // https://stackoverflow.com/questions/42740765/
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
-fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, ray : Ray, material_id : i32) -> bool {
+fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray, mesh : Mesh) -> bool {
 
-	// let mm = modelMatrix;
+	let invModelMatrix = transforms[mesh.id].invModelMatrix;
+	let modelMatrix = transforms[mesh.id].modelMatrix;
 
-	// let ray = Ray((vec4f(rayy.origin, 1) * mm).xyz, (vec4f(rayy.dir, 0) * mm).xyz);
+	let ray = Ray((invModelMatrix * vec4f(incidentRay.origin, 1)).xyz, (invModelMatrix * vec4f(incidentRay.dir, 0.0)).xyz);
 
 	let AB = tri.B - tri.A;
 	let AC = tri.C - tri.A;
@@ -171,22 +172,21 @@ fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, ray : Ray, material_id :
 	}
 
 	hitRec.t = dst;
-	hitRec.p = at(ray, dst);
+	hitRec.p = at(incidentRay, dst);
 
-	// hitRec.p = (vec4f(hitRec.p, 1) * invModelMatrix).xyz;
-	// hitRec.t = length(hitRec.p - rayy.origin);
+	// hitRec.p = (vec4f(at(ray, dst), 1) * modelMatrix).xyz;
+	// hitRec.t = length(hitRec.p - incidentRay.origin);
 
-	// hitRec.normal = normalize(normal);
-	// hitRec.normal = normalize(tri.normalA);
 	hitRec.normal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
-	// hitRec.normal = normalize((vec4f(hitRec.normal, 0) * transpose(modelMatrix)).xyz);
-	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
+	hitRec.normal = (transpose(invModelMatrix) * vec4f(hitRec.normal, 0)).xyz;
+
+	hitRec.front_face = dot(incidentRay.dir, hitRec.normal) < 0;
 	if(hitRec.front_face == false)
 	{
 		hitRec.normal = -hitRec.normal;
 	}
 	
-	hitRec.material = materials[material_id];
+	hitRec.material = materials[mesh.material_id];
 
 	return true;
 }
@@ -311,10 +311,10 @@ fn hit(ray : Ray) -> bool
 	for(var i = 0; i < NUM_MESHES; i++)
 	{
 		var num_tri = meshes[i].offset + meshes[i].num_triangles;
-		var mat_id = meshes[i].material_id;
+		var mesh = meshes[i];
 		for(var j = meshes[i].offset; j < num_tri; j++)
 		{
-			if(hit_triangle(triangles[j], 0.00001, closest_so_far, ray, mat_id))
+			if(hit_triangle(triangles[j], 0.00001, closest_so_far, ray, mesh))
 			{
 				hit_anything = true;
 				closest_so_far = hitRec.t;
@@ -417,6 +417,7 @@ fn camera_get_ray2(s : f32, t : f32) -> Ray {
 	NUM_SPHERES = i32(arrayLength(&sphere_objs));
 	NUM_QUADS = i32(arrayLength(&quad_objs));
 	NUM_MESHES = i32(arrayLength(&meshes));
+	// NUM_MESHES = 0;	
 
 	coords = fragCoord.xyz;
 

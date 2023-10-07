@@ -4,7 +4,7 @@ const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
 const NUM_SAMPLES = 1;
-const MAX_BOUNCES = 3;
+const MAX_BOUNCES = 5;
 const ROTATION = false;
 
 struct viewPort {

@@ -240,7 +240,7 @@ async function main(device) {
 	};
 
 	// eye, center, up
-	camera.set_camera([0, 0, 2.5], [0, 0, 0], [0, 1, 0]);
+	camera.set_camera([0, 0, 2.7], [0, 0, 0], [0, 1, 0]);
 
 	function render()
 	{
