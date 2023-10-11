@@ -7,16 +7,18 @@
 @group(0) @binding(6) var<storage, read> meshes: array<Mesh>;
 @group(0) @binding(7) var<storage, read> transforms : array<modelTransform>;
 @group(0) @binding(8) var<storage, read> materials: array<Material>;
+@group(0) @binding(9) var<storage, read> bvh: array<AABB>;
 
 var<private> NUM_SPHERES : i32;
 var<private> NUM_QUADS : i32;
 var<private> NUM_MESHES : i32;
+var<private> NUM_TRIANGLES : i32;
+var<private> NUM_AABB : i32;
 
 var<private> randState : u32 = 0u;
 var<private> coords : vec3f;
 
 var<private> hitRec : HitRecord;
-var<private> cam : Camera;
 var<private> vp : viewPort;
 
 // PCG prng
@@ -48,8 +50,6 @@ fn near_zero(v : vec3f) -> bool {
 }
 
 fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
-
-	let ttt = transforms[0];
 	
 	// let ray = Ray((vec4f(incidentRay.origin, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz, (vec4f(incidentRay.dir, 0) * transforms[i32(sphere.id)].invModelMatrix).xyz);
 
@@ -97,8 +97,7 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
 fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
-	if(dot(ray.dir, quad.normal) > 0)
-	{
+	if(dot(ray.dir, quad.normal) > 0) {
 		return false;
 	}
 
@@ -139,10 +138,11 @@ fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
 // https://stackoverflow.com/questions/42740765/
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
-fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray, mesh : Mesh) -> bool {
+fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray) -> bool {
 
-	let invModelMatrix = transforms[mesh.id].invModelMatrix;
-	let modelMatrix = transforms[mesh.id].modelMatrix;
+	let mesh = meshes[i32(tri.mesh_id)];
+	let invModelMatrix = transforms[mesh.global_id].invModelMatrix;
+	let modelMatrix = transforms[mesh.global_id].modelMatrix;
 
 	let ray = Ray((invModelMatrix * vec4f(incidentRay.origin, 1)).xyz, (invModelMatrix * vec4f(incidentRay.dir, 0.0)).xyz);
 
@@ -189,6 +189,22 @@ fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray, mesh 
 	hitRec.material = materials[mesh.material_id];
 
 	return true;
+}
+
+
+fn hit_aabb(box : AABB, ray : Ray) -> bool {
+	let invDir = 1 / ray.dir;
+
+	var tbot = (box.min - ray.origin) * invDir;
+	var ttop = (box.max - ray.origin) * invDir;
+	var tmin = min(ttop, tbot);
+	var tmax = max(ttop, tbot);
+	var t = max(tmin.xx, tmin.yz);
+	var t0 = max(t.x, t.y);
+	t = min(tmax.xx, tmax.yz);
+	var t1 = min(t.x, t.y);
+	
+	return t1 > max(t0, 0.0);
 }
 
 fn random_in_unit_sphere() -> vec3f {
@@ -274,9 +290,9 @@ fn material_scatter(ray_in : Ray) -> Ray {
 	return scattered;
 }
 
-// var<private> background_color = vec3f(0.7, 0.7, 0.7);
+var<private> background_color = vec3f(0.7, 0.7, 0.7);
 // var<private> background_color = vec3f(0.1, 0.7, 0.88);
-var<private> background_color = vec3f(19/255.0, 24/255.0, 98/255.0);
+// var<private> background_color = vec3f(19/255.0, 24/255.0, 98/255.0);
 // var<private> background_color = vec3f(0, 0, 0);
 fn ray_color(ray : Ray) -> vec3f {
 
@@ -287,7 +303,7 @@ fn ray_color(ray : Ray) -> vec3f {
 
 	for(var i = 0; i < MAX_BOUNCES; i++)
 	{
-		if(hit(curRay) == false)
+		if(hit2(curRay) == false)
 		{
 			// return acc_color * ((1 - a) * vec3f(1) + a * background_color);
 			acc_light += (1 * background_color) * acc_color;
@@ -308,17 +324,79 @@ fn hit(ray : Ray) -> bool
 	var closest_so_far = MAX_FLOAT;
 	var hit_anything = false;
 
-	for(var i = 0; i < NUM_MESHES; i++)
+	for(var i = 0; i < NUM_TRIANGLES; i++)
 	{
-		var num_tri = meshes[i].offset + meshes[i].num_triangles;
-		var mesh = meshes[i];
-		for(var j = meshes[i].offset; j < num_tri; j++)
+		if(hit_triangle(triangles[i], 0.00001, closest_so_far, ray))
 		{
-			if(hit_triangle(triangles[j], 0.00001, closest_so_far, ray, mesh))
-			{
-				hit_anything = true;
-				closest_so_far = hitRec.t;
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+		}
+	}
+
+	for(var i = 0; i < NUM_SPHERES; i++)
+	{
+		if(hit_sphere(sphere_objs[i], 0.00001, closest_so_far, ray))
+		{
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+		}
+	}
+
+	for(var i = 0; i < NUM_QUADS; i++)
+	{
+		if(hit_quad(quad_objs[i], 0.00001, closest_so_far, ray))
+		{
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+		}
+	}
+
+	return hit_anything;
+}
+
+fn hit2(ray : Ray) -> bool
+{
+	var closest_so_far = MAX_FLOAT;
+	var hit_anything = false;
+
+	var i = 0;
+	while(i < NUM_AABB && i != -1) {
+		
+		if(hit_aabb(bvh[i], ray)) {
+
+			let t = i32(bvh[i].prim_type);
+			switch t {
+				case 0: {
+					if(hit_sphere(sphere_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
+					{
+						hit_anything = true;
+						closest_so_far = hitRec.t;
+					}
+				}
+
+				case 1: {
+					if(hit_quad(quad_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
+					{
+						hit_anything = true;
+						closest_so_far = hitRec.t;
+					}
+				}
+
+				case 2: {
+					if(hit_triangle(triangles[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
+					{
+						hit_anything = true;
+						closest_so_far = hitRec.t;
+					}
+				}
+
+				default: {}
 			}
+
+			i++;
+		}
+		else {
+			i = i32(bvh[i].skip_link);
 		}
 	}
 
@@ -349,9 +427,9 @@ fn hit(ray : Ray) -> bool
 fn antialiased_color() -> vec3f {
 	
 	var pixColor = vec3f(0, 0, 0);
-	let sqrt_spp = sqrt(NUM_SAMPLES);
-	let recip_sqrt_spp = 1.0 / f32(i32(sqrt_spp));
-	var count = 0.0;
+	// let sqrt_spp = sqrt(NUM_SAMPLES);
+	// let recip_sqrt_spp = 1.0 / f32(i32(sqrt_spp));
+	// var count = 0.0;
 
 	// stratified sampling
 	// for(var i = 0.0; i < sqrt_spp; i+= 1.0)
@@ -384,15 +462,16 @@ fn antialiased_color() -> vec3f {
 }
 
 var<private> fovFactor : f32;
+var<private> cam_origin : vec3f;
 fn camera_get_ray2(s : f32, t : f32) -> Ray {
 
-	let origin = (viewMatrix * vec4f(0, 0, 0, 1)).xyz;
+	// let origin = (viewMatrix * vec4f(0, 0, 0, 1)).xyz;
 	let dir = (viewMatrix * vec4f(vec3f(s, t, -fovFactor), 0)).xyz;		// not normalized
-	var ray = Ray(origin, dir);
+	var ray = Ray(cam_origin, dir);
 
 	return ray;
 }
- 
+
 @compute @workgroup_size(64, 1, 1) fn computeSomething(@builtin(workgroup_id) workgroup_id : vec3<u32>, @builtin(local_invocation_id) local_invocation_id : vec3<u32>, @builtin(local_invocation_index) local_invocation_index: u32, @builtin(num_workgroups) num_workgroups: vec3<u32>) {
 	
 	let workgroup_index = workgroup_id.x + workgroup_id.y * num_workgroups.x + workgroup_id.z * num_workgroups.x * num_workgroups.y;
@@ -400,24 +479,14 @@ fn camera_get_ray2(s : f32, t : f32) -> Ray {
 	let fragCoord = vec3f(f32(i) % screenDims.x, f32(i) / screenDims.x, 1);
 
 	fovFactor = 1 / tan(60 * (PI / 180) / 2);
-
-	// var lookfrom = vec3f(2, 6, 8);
-	// var lookat = vec3f(1.5, 0, -3);
-	// var lookfrom = vec3f(0, 0, 3.7);
-	// var lookat = vec3f(0, 0, 0);
-	// camera_init(
-	// 	lookfrom,
-	// 	lookat,
-	// 	vec3f(0, 1, 0),
-	// 	60.0,
-	// 	0.0,
-	// 	1
-	// );
+	cam_origin = (viewMatrix * vec4f(0, 0, 0, 1)).xyz;
 
 	NUM_SPHERES = i32(arrayLength(&sphere_objs));
 	NUM_QUADS = i32(arrayLength(&quad_objs));
 	NUM_MESHES = i32(arrayLength(&meshes));
+	NUM_TRIANGLES = i32(arrayLength(&triangles));
 	// NUM_MESHES = 0;	
+	NUM_AABB = i32(arrayLength(&bvh));
 
 	coords = fragCoord.xyz;
 

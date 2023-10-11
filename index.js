@@ -2,8 +2,7 @@ import {GUI} from 'https://threejsfundamentals.org/threejs/../3rdparty/dat.gui.m
 import { vec3, mat4 } from 'https://cdn.skypack.dev/gl-matrix';
 import {VS} from './shaders/vertex.js';
 import {FS} from './shaders/fragment.js';
-import { Camera } from './lib/camera.js';
-import { Primitives } from './lib/primitives.js';
+import { Camera } from './lib/camera.js';	
 import { Scene } from './lib/scene.js';
 // import {CS} from './shaders/compute.js';
 
@@ -92,6 +91,12 @@ async function main(device) {
 	scene.create_meshes();
 
 	var triangles = scene.get_triangles();
+	triangles.forEach(x => {
+		if(Number.isNaN(x))
+		{
+			console.log(x)
+		}
+	})
 	const triBuffer = device.createBuffer({
 		label: 'tri buffer',
 		size: triangles.byteLength,
@@ -143,6 +148,16 @@ async function main(device) {
 	});
 	device.queue.writeBuffer(transformBuffer, 0, transforms);
 
+	scene.create_bvh();
+	var bvh = scene.get_bvh();
+	const bvhBuffer = device.createBuffer({
+		label: 'bvh buffer',
+		size: bvh.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+	device.queue.writeBuffer(bvhBuffer, 0, bvh);
+
+
 	// A screen sized buffer to store the rgb values
 	var frame = new Float32Array(WIDTH * HEIGHT * 4).fill(0);
   	const frameBuffer = device.createBuffer({
@@ -178,6 +193,7 @@ async function main(device) {
 		{ binding: 6, resource: {buffer : meshBuffer}},
 		{ binding: 7, resource: {buffer : transformBuffer}},
 		{ binding: 8, resource: {buffer : materialBuffer}},
+		{ binding: 9, resource: {buffer : bvhBuffer}},
 
 		// { binding: 5, resource: {buffer : triBuffer}},
 		// { binding: 6, resource: {buffer : modelMatrixBuffer}},
@@ -220,8 +236,6 @@ async function main(device) {
 		layout: pipeline.getBindGroupLayout(0),
 		entries: [
 		  { binding: 0, resource: {buffer : dimsBuffer}},
-		  { binding: 1, resource: {buffer : sphereBuffer}},
-		  { binding: 2, resource: {buffer : quadBuffer}},
 		  { binding: 3, resource: {buffer : frameBuffer}},
 		//   { binding: 5, resource: {buffer : triBuffer}},
 		],
@@ -241,7 +255,6 @@ async function main(device) {
 
 	// eye, center, up
 	camera.set_camera([0, 0, 2.7], [0, 0, 0], [0, 1, 0]);
-
 	function render()
 	{
 		device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);
@@ -280,6 +293,8 @@ async function main(device) {
 
 	const deltaTime = 1/60;
 	var frame = 0.0;
+	let startTime = performance.now();
+	var avgTime = 0.0;
 	async function render2(time) {
 		time = 0.001;
 		frame += 1.0;
@@ -329,6 +344,15 @@ async function main(device) {
 	  	renderPass.end();
 	  	const renderCommandBuffer = renderEncoder.finish();
 	  	device.queue.submit([renderCommandBuffer]);
+
+		let currentTime = performance.now();
+		avgTime += (currentTime - startTime);
+		startTime = currentTime;
+
+		// if(frame % 60 == 0) {
+		// 	console.log(avgTime / 60);
+		// 	avgTime = 0;
+		// }
 
 		stats.end();
 	  	requestAnimationFrame(render2);

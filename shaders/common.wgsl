@@ -4,7 +4,7 @@ const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
 const NUM_SAMPLES = 1;
-const MAX_BOUNCES = 5;
+const MAX_BOUNCES = 4;
 const ROTATION = false;
 
 struct viewPort {
@@ -12,18 +12,6 @@ struct viewPort {
 	viewPortY : f32,
 	pixel_delta_u : vec3f,
 	pixel_delta_v : vec3f,
-}
-
-struct Camera {
-	center : vec3f,
-	u : vec3f,
-	v : vec3f,
-	w : vec3f,
-	lowerleftcorner : vec3f,
-	lensRadius : f32,
-	offset : vec3f,
-	horizontal : vec3f,
-	vertical : vec3f,
 }
 
 struct Ray {
@@ -47,15 +35,17 @@ struct modelTransform {
 struct Sphere {
 	center : vec3f,
 	r : f32,
-	id : f32,
+	global_id : f32,
+	local_id : f32,
 	material_id : f32
 }
 
 struct Quad {
 	Q : vec3f,
 	u : vec3f,
+	local_id : f32,
 	v : vec3f,
-	id : f32,
+	global_id : f32,
 	normal : vec3f,
 	D : f32,
 	w : vec3f, 
@@ -68,14 +58,27 @@ struct Triangle {
 	C : vec3f,
 	normalA : vec3f,
 	normalB : vec3f,
+	local_id : f32,
 	normalC : vec3f,
+
+	mesh_id : f32,
 }
 
 struct Mesh {
 	num_triangles : i32,
 	offset : i32,
-	id : i32,
+	global_id : i32,
 	material_id : i32
+}
+
+struct AABB {
+	min : vec3f,
+	max : vec3f,
+
+	prim_type : f32,
+	prim_id : f32,
+	skip_link : f32,
+	hit_link : f32,
 }
 
 struct HitRecord {
@@ -85,7 +88,6 @@ struct HitRecord {
 	front_face : bool,
 	material : Material,
 }
-
 
 // ====================== Camera Code for defocus blue ============================
 
