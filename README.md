@@ -1,19 +1,19 @@
 # WebGPU-Path-Tracer
 
 ## Features
-- Shapes - spheres & parallelogram
-- Materials - diffuse, mirror & glass
-- All ray calculations done in a compute shader
+- Primitives - Spheres, Quads, & Triangles
+- Load .obj meshes
+- BVH acceleration structure
+- Materials - diffuse, mirror & dielectrics
+- Compute shader + (Vertex + Fragment shader)
 - Orbit Camera
 - Stratified sampling to sample rays in a pixel
 - Progressive Rendering
 
-## To-Do
-- Add .obj triangle loader
-- Implement Bounding Volume Hierarchies (BVH)
-- Explore Importance sampling and light sampling
-
 ## Screenshots
+![Screenshot 2023-10-11 234006](https://github.com/Shridhar2602/WebGPU-Path-Tracer/assets/63835433/082d66d1-04e9-446f-8f74-212c3c77426e)
+![Screenshot 2023-10-11 223537](https://github.com/Shridhar2602/WebGPU-Path-Tracer/assets/63835433/24d99115-8838-4d8c-bf02-8cff0b39d7e0)
+![Screenshot 2023-10-08 003930](https://github.com/Shridhar2602/WebGPU-Path-Tracer/assets/63835433/5b352ef6-e94b-4c92-86ab-5afcf0497cda)
 ![Screenshot 2023-08-27 190220](https://github.com/Shridhar2602/WebGPU-Path-Tracer/assets/63835433/bc01de53-d127-46aa-8d54-50cac26bccad)
 ![Screenshot 2023-08-28 143323](https://github.com/Shridhar2602/WebGPU-Path-Tracer/assets/63835433/17f998ce-c143-46ad-bff2-688314f28e4b)
 ![Screenshot 2023-08-28 144955](https://github.com/Shridhar2602/WebGPU-Path-Tracer/assets/63835433/4179cfc1-4108-449e-8117-9c28649a51b9)
