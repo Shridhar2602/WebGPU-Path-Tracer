@@ -1,9 +1,2 @@
 title: WebGPU Path Tracing
-author:
-  name: ""
-  email: ""
-
-theme: minima
-
-minima:
-  skin: dark
+theme: jekyll-theme-cayman
