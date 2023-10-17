@@ -45,26 +45,26 @@ In a compute shader, we only have access to the `global_invocation_index` , whic
 
 Given the screen dimensions, we can easily convert the linear pixel index to the raster space (a 2D space with (0,0) being the top-left corner) -
 
-```glsl
+```rust
 let fragCoord = vec3f(f32(i) % screenDims.x, f32(i) / screenDims.x, 1);
 ```
 
 The z-coordinate is fixed as 1 since our projection plane is fixed at (0, 0, 1). Now, we can convert these to the screen space -
 
-```glsl
+```rust
 aspect = screenDims.x / screenDims.y;
-pixel_x = aspect * (2 * (fragCoord.x / width) - 1) 	// [ranges from -aspect to +aspect]
-pixel_y = -(2 * (fragCoord.y / height) - 1)			// [ranges from +1 to -1]
+pixel_x = aspect * (2 * (fragCoord.x / width) - 1)  // [ranges from -aspect to +aspect]
+pixel_y = -(2 * (fragCoord.y / height) - 1)  // [ranges from +1 to -1]
 ```
 
 In rasterization, the camera remains fixed at the origin and we use a world-to-view matrix (typically called `viewMatrix`) to transform the world to the camera space, where all calculations are carried out. However, in ray tracing, it is more convenient to work in world space. So, we transform the ray to the world space using the inverse of the `viewMatrix`.
 
 The following function takes the pixel coordinates, computes the ray from the camera to the pixel, and transforms it to the world space:
 
-```glsl
+```rust
 fn camera_get_ray(s : f32, t : f32) -> Ray {
 
-	let origin = (invViewMatrix * vec4f(0, 0, 0, 1)).xyz;   // projection plane fixed at (0,0,1)
+	let origin = (invViewMatrix * vec4f(0, 0, 0, 1)).xyz;  // projection plane fixed at (0,0,1)
 	let dir = (invViewMatrix * vec4f(vec3f(s, t, -fovFactor), 0)).xyz;
 	var ray = Ray(origin, dir);
 
