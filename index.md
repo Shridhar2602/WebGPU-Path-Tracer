@@ -1,4 +1,4 @@
-# WebGPU Path Tracer
+# WebGPU Path Tracer - Part 1
 
 [Code Link](https://github.com/Shridhar2602/WebGPU-Path-Tracer)
 
@@ -8,9 +8,9 @@ Warning - It requires a reasonably powerful GPU and a web browser with WebGPU su
 
 <div align="center">
   <p align="center">
-  <img src="./assets/img2.png" width="33%" />
-  <img src="./assets/output.gif" width="33%" />
-  <img src="./assets/img1.png" width="33%" />
+  <img src="./assets/img2.png" width="32%" />
+  <img src="./assets/output.gif" width="32%" />
+  <img src="./assets/img1.png" width="32%" />
   </p>
 </div>
 
@@ -19,7 +19,7 @@ Warning - It requires a reasonably powerful GPU and a web browser with WebGPU su
 For our Advanced Computer Graphics course project, we decided to build our own Path Tracer from ground zero. Surprisingly, building a path tracer is not that complex. There’s even a [Monte Carlo Path Tracer written in just 99 lines of C++](https://www.kevinbeason.com/smallpt/), generating a picture of a Cornell Box. So we first need to set some goals - 
 
 - We want our ray tracer to be real-time.
-- We don’t want to just make another toy ray tracer capable of rendering only parametric shapes. There exist tons of really cool shaders on [Shadertoy](https://www.shadertoy.com/).
+- We don’t want to just make another toy ray tracer capable of rendering only parametric shapes. There exist tons of such really cool shaders on [Shadertoy](https://www.shadertoy.com/).
 - A ray tracer that can handle small meshes, maybe a few thousand triangles, would be a solid starting point.
 - Building a good ray tracer involved two key aspects: improving the render quality and enhancing performance. We’ll begin by setting up a bare bones path tracer with basic materials. Then optimizing it to run really fast, and finally add other fancy effects.
 
@@ -33,7 +33,7 @@ Ray tracing (technically recursive ray tracing), sends one single ray through ea
 
 Now, path tracing on the other hand, is like ray tracing on steroids. It *naturally* simulates all these fancy effects. It starts the same, by casting a ray through each pixel. However, instead of tracing a path to each light source, it simply bounces the ray off the surface and keeps bouncing it until it either hits a light source or a predefined bounce limit is reached. It then recursively calculates the amount of light transferred back to the pixel, considering all material information from surfaces along the way. Exactly how light works in reality. The only catch is that this leads to very noisy images as most of the pixels fail to find any light source. So, instead of sending a single ray, a path tracer sends out tens of thousands of rays for each pixel. Each ray follows a random path and the results of all these paths are averaged to calculate the pixel’s color.
 
-What we are doing here is path tracing. It is faithful to reality but *painfully* slow. Achieving real-time performance may require the use of its more efficient variants like bidirectional path tracing, Volumetric path tracing, and Metropolis light transport. Now that we know what path tracing is, let’s take a moment to appreciate Nvidia’s recent breakthrough : [real-time path tracing in AAA games](https://www.youtube.com/watch?v=3wR7jR1pIQQ).
+What we are doing here is path tracing. It is faithful to reality but *painfully* slow. Achieving real-time performance may require the use of its more efficient variants like bidirectional path tracing, Volumetric path tracing, and Metropolis light transport. Now that we know what path tracing is, let’s take a moment to appreciate Nvidia’s recent breakthrough: [Real-time path tracing in AAA games](https://www.youtube.com/watch?v=3wR7jR1pIQQ).
 
 NOTE : For the sake of simplicity, we will use the terms ray tracing and path tracing interchangeably throughout this post.
 
