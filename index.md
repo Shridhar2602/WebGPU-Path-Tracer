@@ -14,6 +14,8 @@ Warning - It requires a reasonably powerful GPU and a web browser with WebGPU su
   </p>
 </div>
 
+[WebGPU Path Tracer - Part 2](./part2.md)
+
 ## Goal
 
 For our Advanced Computer Graphics course project, we decided to build our own Path Tracer from ground zero. Surprisingly, building a path tracer is not that complex. There’s even a [Monte Carlo Path Tracer written in just 99 lines of C++](https://www.kevinbeason.com/smallpt/), generating a picture of a Cornell Box. So we first need to set some goals - 
@@ -200,7 +202,7 @@ Now we can continually render at 60fps, with our image getting better with time.
   </p>
 </div>
 
-Next up, ray tracing triangular meshes using BVH!
+[Next up](./part2.md), ray tracing triangular meshes using BVH!
 
 ## References
 
