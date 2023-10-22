@@ -72,37 +72,37 @@ So where is the bottleneck? Let’s examine our hit function which checks for ra
 ```rust
 fn hit(ray : Ray) -> bool
 {
-		var closest_so_far = MAX_FLOAT;
-		var hit_anything = false;
+	var closest_so_far = MAX_FLOAT;
+	var hit_anything = false;
 
-		for(var i = 0; i < NUM_TRIANGLES; i++)
+	for(var i = 0; i < NUM_TRIANGLES; i++)
+	{
+		if(hit_triangle(triangles[i], 0.00001, closest_so_far, ray)) 
 		{
-				if(hit_triangle(triangles[i], 0.00001, closest_so_far, ray)) 
-				{
-						hit_anything = true;
-						closest_so_far = hitRec.t;
-				}
+				hit_anything = true;
+				closest_so_far = hitRec.t;
 		}
+	}
 
-		for(var i = 0; i < NUM_SPHERES; i++)
+	for(var i = 0; i < NUM_SPHERES; i++)
+	{
+		if(hit_sphere(sphere_objs[i], 0.00001, closest_so_far, ray))
 		{
-				if(hit_sphere(sphere_objs[i], 0.00001, closest_so_far, ray))
-				{
-						hit_anything = true;
-						closest_so_far = hitRec.t;
-				}
+				hit_anything = true;
+				closest_so_far = hitRec.t;
 		}
+	}
 
-		for(var i = 0; i < NUM_QUADS; i++)
+	for(var i = 0; i < NUM_QUADS; i++)
+	{
+		if(hit_quad(quad_objs[i], 0.00001, closest_so_far, ray))
 		{
-				if(hit_quad(quad_objs[i], 0.00001, closest_so_far, ray))
-				{
-						hit_anything = true;
-					closest_so_far = hitRec.t;
-				}
+				hit_anything = true;
+			closest_so_far = hitRec.t;
 		}
+	}
 
-		return hit_anything;
+	return hit_anything;
 }
 ```
 
@@ -131,18 +131,18 @@ struct AABB {
 }
 
 fn hit_aabb(box : AABB, ray : Ray) -> bool {
-		let invDir = 1 / ray.dir;
-
-		var tbot = (box.min - ray.origin) * invDir;
-		var ttop = (box.max - ray.origin) * invDir;
-		var tmin = min(ttop, tbot);
-		var tmax = max(ttop, tbot);
-		var t = max(tmin.xx, tmin.yz);
-		var t0 = max(t.x, t.y);
-		t = min(tmax.xx, tmax.yz);
-		var t1 = min(t.x, t.y);
+	let invDir = 1 / ray.dir;
 	
-		return t1 > max(t0, 0.0);
+	var tbot = (box.min - ray.origin) * invDir;
+	var ttop = (box.max - ray.origin) * invDir;
+	var tmin = min(ttop, tbot);
+	var tmax = max(ttop, tbot);
+	var t = max(tmin.xx, tmin.yz);
+	var t0 = max(t.x, t.y);
+	t = min(tmax.xx, tmax.yz);
+	var t1 = min(t.x, t.y);
+
+	return t1 > max(t0, 0.0);
 }
 ```
 
@@ -169,34 +169,34 @@ The following code creates a BVH using recursion:
 ```jsx
 static generate_bvh_heirarchy(objs, start, end) {
 
-		// pick an axis
-		let axis = Math.floor(Math.random() * 3);
-		let comparator = (axis == 0) ? BVH.box_x_compare : (axis == 1) ? BVH.box_y_compare : BVH.box_z_compare;
+	// pick an axis
+	let axis = Math.floor(Math.random() * 3);
+	let comparator = (axis == 0) ? BVH.box_x_compare : (axis == 1) ? BVH.box_y_compare : BVH.box_z_compare;
 
-		let obj_span = end - start;
+	let obj_span = end - start;
 
-		let node = new BVH();
+	let node = new BVH();
 
-		// if leaf node, assign objects bounding box to the node
-		if(obj_span == 0) {
-			node.obj = objs[start]
-			node.bbox = node.obj.bbox;
-		}
-
-		else {
-			const subarray = objs.slice(start, end + 1); 
-			subarray.sort(comparator);
-			objs.splice(start, subarray.length, ...subarray);
-
-			let mid = start + Math.floor(obj_span / 2);
-			node.left = BVH.generate_bvh_heirarchy(objs, start, mid);
-			node.right = BVH.generate_bvh_heirarchy(objs, mid + 1, end);
-
-			node.bbox.merge_bbox(node.left.bbox, node.right.bbox);
-		}
-
-		return node;
+	// if leaf node, assign objects bounding box to the node
+	if(obj_span == 0) {
+		node.obj = objs[start]
+		node.bbox = node.obj.bbox;
 	}
+
+	else {
+		const subarray = objs.slice(start, end + 1); 
+		subarray.sort(comparator);
+		objs.splice(start, subarray.length, ...subarray);
+
+		let mid = start + Math.floor(obj_span / 2);
+		node.left = BVH.generate_bvh_heirarchy(objs, start, mid);
+		node.right = BVH.generate_bvh_heirarchy(objs, mid + 1, end);
+
+		node.bbox.merge_bbox(node.left.bbox, node.right.bbox);
+	}
+
+	return node;
+}
 ```
 
 ## Traversing a BVH
@@ -271,7 +271,7 @@ Our path tracer can now handle about 6000 triangles in real-time. There is an an
 
 [1] [Ray-Tracing: Rendering a Triangle (scratchapixel.com)](https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/barycentric-coordinates.html)
 
-[2] [Graphics Compendium | Transformations](https://graphicscompendium.com/raytracing/12-transformations)
+[2] [Graphics Compendium - Transformations](https://graphicscompendium.com/raytracing/12-transformations)
 
 [3] [05_transformation_hierarchy.pdf (mit.edu)](http://groups.csail.mit.edu/graphics/classes/6.837/F03/lectures/05_transformation_hierarchy.pdf)
 
