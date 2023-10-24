@@ -4,7 +4,7 @@ const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
 const NUM_SAMPLES = 1;
-const MAX_BOUNCES = 4;
+const MAX_BOUNCES = 5;
 const ROTATION = false;
 
 struct viewPort {
@@ -20,10 +20,12 @@ struct Ray {
 }
 
 struct Material {
-	color : vec3f,
-	emissionColor : vec3f,
-	fuzz : f32,
-	eta : f32,
+	color : vec3f,			// diffuse color
+	specularColor : vec3f,	// specular color
+	emissionColor : vec3f,	// emissive color
+	specularStrength : f32,	// chance that a ray hitting would reflect specularly
+	roughness : f32,		// diffuse strength
+	eta : f32,				// refractive index
 	material_type : f32,
 }
 
@@ -87,6 +89,17 @@ struct HitRecord {
 	normal : vec3f,
 	front_face : bool,
 	material : Material,
+}
+
+fn aces_approx(v : vec3f) -> vec3f
+{
+    let v1 = v * 0.6f;
+    const a = 2.51f;
+    const b = 0.03f;
+    const c = 2.43f;
+    const d = 0.59f;
+    const e = 0.14f;
+    return clamp((v1*(a*v1+b))/(v1*(c*v1+d)+e), vec3(0.0f), vec3(1.0f));
 }
 
 // ====================== Camera Code for defocus blue ============================

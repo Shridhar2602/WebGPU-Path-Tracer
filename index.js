@@ -91,12 +91,7 @@ async function main(device) {
 	scene.create_meshes();
 
 	var triangles = scene.get_triangles();
-	triangles.forEach(x => {
-		if(Number.isNaN(x))
-		{
-			console.log(x)
-		}
-	})
+
 	const triBuffer = device.createBuffer({
 		label: 'tri buffer',
 		size: triangles.byteLength,
@@ -254,7 +249,7 @@ async function main(device) {
 	};
 
 	// eye, center, up
-	camera.set_camera([0, 0, 2.7], [0, 0, 0], [0, 1, 0]);
+	camera.set_camera([0, 0, 2.4], [0, 0, 0], [0, 1, 0]);
 	function render()
 	{
 		device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);

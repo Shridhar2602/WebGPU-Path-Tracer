@@ -177,7 +177,7 @@ fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray) -> bo
 	// hitRec.p = (vec4f(at(ray, dst), 1) * modelMatrix).xyz;
 	// hitRec.t = length(hitRec.p - incidentRay.origin);
 
-	hitRec.normal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
+	hitRec.normal = tri.normalA * w + tri.normalB * u + tri.normalC * v;
 	hitRec.normal = (transpose(invModelMatrix) * vec4f(hitRec.normal, 0)).xyz;
 
 	hitRec.front_face = dot(incidentRay.dir, hitRec.normal) < 0;
@@ -220,7 +220,7 @@ fn random_in_unit_sphere() -> vec3f {
 	// let y = randNormalDist();
 	// let z = randNormalDist();
 
-	return normalize(vec3f(x, y, z));
+	return vec3f(x, y, z);
 }
 
 fn random_in_unit_disk() -> vec3f {
@@ -230,14 +230,20 @@ fn random_in_unit_disk() -> vec3f {
 	return normalize(vec3f(r * cos(theta), r * sin(theta), 0));
 }
 
-fn random_on_hemisphere(normal : vec3f) -> vec3f {
-	var on_unit_sphere = random_in_unit_sphere() + normal;
-	if(dot(on_unit_sphere, normal) > 0.0) {
-		return on_unit_sphere;
-	}
-	else {
-		return -on_unit_sphere;
-	}
+// fn random_on_hemisphere(normal : vec3f) -> vec3f {
+// 	var on_unit_sphere = random_in_unit_sphere() + normal;
+// 	if(dot(on_unit_sphere, normal) > 0.0) {
+// 		return on_unit_sphere;
+// 	}
+// 	else {
+// 		return -on_unit_sphere;
+// 	}
+// }
+
+fn random_on_hemisphere(normal: vec3f) -> vec3f {
+    let on_unit_sphere = random_in_unit_sphere() + normal;
+	let sign_dot = select(1.0, 0.0, dot(on_unit_sphere, normal) > 0.0);
+    return mix(on_unit_sphere, -on_unit_sphere, sign_dot);
 }
 
 fn reflectance(cosine : f32, ref_idx : f32) -> f32 {
@@ -246,23 +252,28 @@ fn reflectance(cosine : f32, ref_idx : f32) -> f32 {
 	return r0 + (1 - r0) * pow((1 - cosine), 5);
 }
 
+var<private> doSpecular : f32;
 fn material_scatter(ray_in : Ray) -> Ray {
 
 	var scattered = Ray(vec3f(0), vec3f(0));
 	if(hitRec.material.material_type == LAMBERTIAN)
 	{
-		var scatter_dir = random_on_hemisphere(hitRec.normal);
-		if(near_zero(scatter_dir))
-		{
-			scatter_dir = hitRec.normal;
+		doSpecular = select(0.0, 1.0, rand2D() < hitRec.material.specularStrength);
+
+		var diffuse_dir = random_on_hemisphere(hitRec.normal);
+		if(near_zero(diffuse_dir)) {
+			diffuse_dir = hitRec.normal;
 		}
-		scattered = Ray(hitRec.p, scatter_dir);
+		var specular_dir = reflect(ray_in.dir, hitRec.normal);
+		specular_dir = normalize(mix(specular_dir, diffuse_dir, hitRec.material.roughness));
+
+		scattered = Ray(hitRec.p, mix(diffuse_dir, specular_dir, doSpecular));
 	}
 
 	else if(hitRec.material.material_type == MIRROR)
 	{
-		var reflected = reflect(normalize(ray_in.dir), hitRec.normal);
-		scattered = Ray(hitRec.p, reflected + hitRec.material.fuzz * random_on_hemisphere(hitRec.normal));
+		var reflected = reflect(ray_in.dir, hitRec.normal);
+		scattered = Ray(hitRec.p, reflected + hitRec.material.roughness * random_on_hemisphere(hitRec.normal));
 	}
 
 	else if(hitRec.material.material_type == GLASS)
@@ -310,10 +321,19 @@ fn ray_color(ray : Ray) -> vec3f {
 			break;
 		}
 
-		acc_light += hitRec.material.emissionColor * acc_color;
-		acc_color *= hitRec.material.color;
-
+		
 		curRay = material_scatter(curRay);
+
+		acc_light += 1 * hitRec.material.emissionColor * acc_color;
+		// acc_color *= 1 * hitRec.material.color;
+		acc_color *= 1 * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular);
+
+		let p = max(acc_color.x, max(acc_color.y, acc_color.z));
+		if(rand2D() > p) {
+			break;
+		}
+
+		acc_color *= (1.0 / p);
 	}
 
 	return acc_light;
@@ -372,6 +392,7 @@ fn hit2(ray : Ray) -> bool
 						hit_anything = true;
 						closest_so_far = hitRec.t;
 					}
+					break;
 				}
 
 				case 1: {
@@ -380,6 +401,7 @@ fn hit2(ray : Ray) -> bool
 						hit_anything = true;
 						closest_so_far = hitRec.t;
 					}
+					break;
 				}
 
 				case 2: {
@@ -455,10 +477,10 @@ fn antialiased_color() -> vec3f {
 		);
 		pixColor += ray_color(ray);
 	}
-	pixColor /= NUM_SAMPLES;
 
-	// sqrt for gamma correction
-	return pixColor.xyz;
+	pixColor /= NUM_SAMPLES;
+	// pixColor = aces_approx(pixColor);
+	return pixColor;
 }
 
 var<private> fovFactor : f32;
