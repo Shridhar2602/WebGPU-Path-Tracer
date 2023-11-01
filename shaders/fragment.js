@@ -22,7 +22,7 @@ fn get2Dfrom1D(pos: vec2f) -> u32 {
 @fragment fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
 
 	let i = get2Dfrom1D(fragCoord.xy);
-	var color = framebuffer[i].xyz;
+	var color = framebuffer[i].xyz / screenDims.z;
 
 	color = aces_approx(color.xyz);
 	color = pow(color.xyz, vec3f(1/2.2));

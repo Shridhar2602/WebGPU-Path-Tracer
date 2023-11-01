@@ -1,96 +1,215 @@
-const PI = 3.1415926535897932385;
-const MAX_FLOAT = 999999999.999;
-const LAMBERTIAN = 0;
-const MIRROR = 1;
-const GLASS = 2;
-const NUM_SAMPLES = 1;
-const MAX_BOUNCES = 5;
-const ROTATION = false;
+var<private> NUM_SPHERES : i32;
+var<private> NUM_QUADS : i32;
+var<private> NUM_MESHES : i32;
+var<private> NUM_TRIANGLES : i32;
+var<private> NUM_AABB : i32;
 
-struct viewPort {
-	viewPortX : f32,
-	viewPortY : f32,
-	pixel_delta_u : vec3f,
-	pixel_delta_v : vec3f,
+var<private> randState : u32 = 0u;
+var<private> coords : vec3f;
+
+var<private> hitRec : HitRecord;
+var<private> lights : Quad;
+
+fn at(ray : Ray, t : f32) -> vec3f {
+	return ray.origin + t * ray.dir;
 }
 
-struct Ray {
-	origin : vec3f,
-	dir : vec3f,
+// PCG prng
+// https://www.shadertoy.com/view/XlGcRh
+fn rand2D() -> f32 
+{
+	randState = randState * 747796405u + 2891336453u;
+	var word : u32 = ((randState >> ((randState >> 28u) + 4u)) ^ randState) * 277803737u;
+	return f32((word >> 22u)^word) / 4294967295;
 }
 
-struct Material {
-	color : vec3f,			// diffuse color
-	specularColor : vec3f,	// specular color
-	emissionColor : vec3f,	// emissive color
-	specularStrength : f32,	// chance that a ray hitting would reflect specularly
-	roughness : f32,		// diffuse strength
-	eta : f32,				// refractive index
-	material_type : f32,
+// random numbers from a normal distribution
+fn randNormalDist() -> f32 {
+	let theta = 2 * PI * rand2D();
+	let rho = sqrt(-2 * log(rand2D()));
+	return rho * cos(theta); 
 }
 
-struct modelTransform {
-	modelMatrix : mat4x4f,
-	invModelMatrix : mat4x4f
+fn random_double(min : f32, max : f32) -> f32 {
+	return min + (max - min) * rand2D();
 }
 
-struct Sphere {
-	center : vec3f,
-	r : f32,
-	global_id : f32,
-	local_id : f32,
-	material_id : f32
+fn near_zero(v : vec3f) -> bool {
+	return (abs(v[0]) < 0 && abs(v[1]) < 0 && abs(v[2]) < 0);
 }
 
-struct Quad {
-	Q : vec3f,
-	u : vec3f,
-	local_id : f32,
-	v : vec3f,
-	global_id : f32,
-	normal : vec3f,
-	D : f32,
-	w : vec3f, 
-	material_id : f32,
+fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
+	
+	// let ray = Ray((vec4f(incidentRay.origin, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz, (vec4f(incidentRay.dir, 0) * transforms[i32(sphere.id)].invModelMatrix).xyz);
+
+	let oc = ray.origin - sphere.center;
+	let a = dot(ray.dir, ray.dir);
+	let half_b = dot(ray.dir, oc);
+	let c = dot(oc, oc) - sphere.r * sphere.r;
+	let discriminant = half_b*half_b - a*c;
+
+	if(discriminant < 0) {
+		return false;
+	}
+
+	let sqrtd = sqrt(discriminant);
+	var root = (-half_b - sqrtd) / a;
+	if(root <= tmin || root >= tmax)
+	{
+		root = (-half_b + sqrtd) / a;
+		if(root <= tmin || root >= tmax)
+		{
+			return false;
+		}
+	}
+
+	hitRec.t = root;
+	hitRec.p = at(ray, root);
+
+	// hitRec.p = (vec4f(hitRec.p, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz;
+	// hitRec.t = distance(hitRec.p, incidentRay.origin);
+
+	hitRec.normal = (hitRec.p - sphere.center) / sphere.r;
+
+	// hitRec.normal = normalize((vec4f(hitRec.normal, 0) * transpose(transforms[i32(sphere.id)].modelMatrix)).xyz);
+
+	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
+	if(hitRec.front_face == false)
+	{
+		hitRec.normal = -hitRec.normal;
+	}
+
+
+	hitRec.material = materials[i32(sphere.material_id)];
+	return true;
 }
 
-struct Triangle {
-	A : vec3f,
-	B : vec3f,
-	C : vec3f,
-	normalA : vec3f,
-	normalB : vec3f,
-	local_id : f32,
-	normalC : vec3f,
+fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
-	mesh_id : f32,
+	if(dot(ray.dir, quad.normal) > 0) {
+		return false;
+	}
+
+	let denom = dot(quad.normal, ray.dir);
+
+	// No hit if the ray is paraller to the plane
+	if(abs(denom) < 1e-8) {
+		return false;
+	}
+
+	let t = (quad.D - dot(quad.normal, ray.origin)) / denom;
+	if(t <= tmin || t >= tmax) {
+		return false;
+	}
+
+	// determine if hit point lies within quarilateral
+	let intersection = at(ray, t);
+	let planar_hitpt_vector = intersection - quad.Q;
+	let alpha = dot(quad.w, cross(planar_hitpt_vector, quad.v));
+	let beta = dot(quad.w, cross(quad.u, planar_hitpt_vector));
+
+	if(alpha < 0 || 1 < alpha || beta < 0 || 1 < beta) {
+		return false;
+	}
+
+	hitRec.t = t;
+	hitRec.p = intersection;
+	hitRec.normal = quad.normal;
+	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
+	if(hitRec.front_face == false)
+	{
+		hitRec.normal = -hitRec.normal;
+	}
+
+	hitRec.material = materials[i32(quad.material_id)];
+	return true;
 }
 
-struct Mesh {
-	num_triangles : i32,
-	offset : i32,
-	global_id : i32,
-	material_id : i32
+// https://stackoverflow.com/questions/42740765/
+// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
+fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray) -> bool {
+
+	let mesh = meshes[i32(tri.mesh_id)];
+	let invModelMatrix = transforms[mesh.global_id].invModelMatrix;
+	let modelMatrix = transforms[mesh.global_id].modelMatrix;
+
+	let ray = Ray((invModelMatrix * vec4f(incidentRay.origin, 1)).xyz, (invModelMatrix * vec4f(incidentRay.dir, 0.0)).xyz);
+
+	let AB = tri.B - tri.A;
+	let AC = tri.C - tri.A;
+	let normal = cross(AB, AC);
+	let ao = ray.origin - tri.A;
+	let dao = cross(ao, ray.dir);
+
+	let determinant = -dot(ray.dir, normal);
+	let invDet = 1 / determinant;
+
+	// calculate dist to triangle & barycentric coordinates of intersection point
+	let dst = dot(ao, normal) * invDet;
+	let u = dot(AC, dao) * invDet;
+	let v = -dot(AB, dao) * invDet;
+	let w = 1 - u - v;
+
+	// CULLING
+	if(determinant > -tmin && determinant < tmin) {
+		return false;
+	}
+
+	if(dst < tmin || dst > tmax || u < tmin || v < tmin || w < tmin)
+	{
+		return false;
+	}
+
+	hitRec.t = dst;
+	hitRec.p = at(incidentRay, dst);
+
+	// hitRec.p = (vec4f(at(ray, dst), 1) * modelMatrix).xyz;
+	// hitRec.t = length(hitRec.p - incidentRay.origin);
+
+	hitRec.normal = tri.normalA * w + tri.normalB * u + tri.normalC * v;
+	hitRec.normal = normalize((transpose(invModelMatrix) * vec4f(hitRec.normal, 0)).xyz);
+
+	hitRec.front_face = dot(incidentRay.dir, hitRec.normal) < 0;
+	if(hitRec.front_face == false)
+	{
+		hitRec.normal = -hitRec.normal;
+	}
+	
+	hitRec.material = materials[mesh.material_id];
+
+	return true;
 }
 
-struct AABB {
-	min : vec3f,
-	max : vec3f,
+fn hit_aabb(box : AABB, ray : Ray) -> bool {
+	let invDir = 1 / ray.dir;
 
-	prim_type : f32,
-	prim_id : f32,
-	skip_link : f32,
-	hit_link : f32,
+	var tbot = (box.min - ray.origin) * invDir;
+	var ttop = (box.max - ray.origin) * invDir;
+	var tmin = min(ttop, tbot);
+	var tmax = max(ttop, tbot);
+	var t = max(tmin.xx, tmin.yz);
+	var t0 = max(t.x, t.y);
+	t = min(tmax.xx, tmax.yz);
+	var t1 = min(t.x, t.y);
+	
+	return t1 > max(t0, 0.0);
 }
 
-struct HitRecord {
-	p : vec3f,
-	t : f32,
-	normal : vec3f,
-	front_face : bool,
-	material : Material,
+fn get_lights() -> bool {
+	for(var i = 0; i < NUM_QUADS; i++) {
+		let emission = materials[i32(quad_objs[i].material_id)].emissionColor;
+
+		if(emission.x > 0.0) {
+			lights = quad_objs[i];
+			break;
+		}
+	}
+
+	return true;
 }
 
+// ACES approximation for tone mapping
+// https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/):
 fn aces_approx(v : vec3f) -> vec3f
 {
     let v1 = v * 0.6f;
@@ -101,35 +220,3 @@ fn aces_approx(v : vec3f) -> vec3f
     const e = 0.14f;
     return clamp((v1*(a*v1+b))/(v1*(c*v1+d)+e), vec3(0.0f), vec3(1.0f));
 }
-
-// ====================== Camera Code for defocus blue ============================
-
-// fn camera_init(lookfrom : vec3f, lookat : vec3f, up : vec3f, vfov : f32, aperture : f32, focusDist : f32) {
-	
-// 	cam.lensRadius = aperture / 2.0;
-
-// 	vp.viewPortY = 2 * tan(vfov * (PI / 180) / 2);
-// 	vp.viewPortX = vp.viewPortY * (screenDims.x / screenDims.y);
-
-// 	cam.center = lookfrom;
-// 	cam.w = viewMatrix[2].xyz;
-// 	cam.u = viewMatrix[0].xyz;
-// 	cam.v = viewMatrix[1].xyz;
-
-// 	cam.lowerleftcorner = cam.center 	- (vp.viewPortX / 2) * focusDist * cam.u 
-// 										- (vp.viewPortY / 2) * focusDist * cam.v 
-// 										- focusDist * cam.w;
-
-// 	cam.horizontal = vp.viewPortX * focusDist * cam.u;
-// 	cam.vertical = vp.viewPortY * focusDist * cam.v;
-// }
-
-// fn camera_get_ray(s : f32, t : f32) -> Ray {
-// 	let rd = cam.lensRadius * random_in_unit_disk();
-// 	let offset = cam.u * rd.x + cam.v * rd.y;
-
-// 	return Ray(
-// 				cam.center + offset,
-// 				cam.lowerleftcorner + s * cam.horizontal + t * cam.vertical - cam.center - offset
-// 			);
-// }
