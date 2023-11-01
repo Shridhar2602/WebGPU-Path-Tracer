@@ -16,6 +16,8 @@ Warning - It requires a reasonably powerful GPU and a web browser with WebGPU su
 
 [WebGPU Path Tracer - Part 2](./part2.md)
 
+[WebGPU Path Tracer - Part 3](./part3.md)
+
 ## Goal
 
 For our Advanced Computer Graphics course project, we decided to build our own Path Tracer from ground zero. Surprisingly, building a path tracer is not that complex. There’s even a [Monte Carlo Path Tracer written in just 99 lines of C++](https://www.kevinbeason.com/smallpt/), generating a picture of a Cornell Box. So we first need to set some goals - 

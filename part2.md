@@ -265,7 +265,7 @@ And just like that, we are back to real-time.
   <sub>6000 triangles</sub>
 </p>
 
-Our path tracer can now handle about 6000 triangles in real-time. There is an annoying bug in our BVH implementation which doesn’t allow us to render larger meshes. And we’ll have to modify our code to handle multiple instances of large meshes. We will skip these performance upgrades for now, and next up focus on improving the quality of our renders.
+Our path tracer can now handle about 6000 triangles in real-time. There is an annoying bug in our BVH implementation which doesn’t allow us to render larger meshes. And we’ll have to modify our code to handle multiple instances of large meshes. We will skip these performance upgrades for now, and [next up](./part3.md) focus on improving the quality of our renders.
 
 ## References
 
