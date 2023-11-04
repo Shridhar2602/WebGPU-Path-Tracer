@@ -290,13 +290,13 @@ Depending on the scene, we might have to adjust the MIS weights.
 <div style="display:flex">
      <div style="flex:1; text-align: center;">
          <figure>
-				<img src="./assets/withoutMis.png" width="100%"/>
+				<img src="./assets/withoutMIS.png" width="100%"/>
 				  <figcaption align="center"><em>Without MIS</em></figcaption>
 		</figure>
      </div>
      <div style="flex:1; text-align: center">
 	 		<figure>
-				<img src="./assets/withMis.png" width="100%"/>
+				<img src="./assets/withMIS.png" width="100%"/>
 				  <figcaption align="center"><em>With MIS</em></figcaption>
 			</figure>
      </div>
