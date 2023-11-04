@@ -84,14 +84,14 @@ fn material_scatter(ray_in : Ray) -> Ray {
 
 		let uvw = onb_build_from_w(hitRec.normal);
 		var diffuse_dir = cosine_sampling_wrt_Z();
-		diffuse_dir = onb_get_local(diffuse_dir);
+		diffuse_dir = normalize(onb_get_local(diffuse_dir));
 
-		scattered = Ray(hitRec.p, normalize(diffuse_dir));
+		scattered = Ray(hitRec.p, diffuse_dir);
 
-		// doSpecular = select(0.0, 1.0, rand2D() < hitRec.material.specularStrength);
+		doSpecular = select(0.0, 1.0, rand2D() < hitRec.material.specularStrength);
 
 		// var diffuse_dir = uniform_sampling_hemisphere();
-		// // var diffuse_dir = cosine_sampling_hemisphere();
+		// var diffuse_dir = cosine_sampling_hemisphere();
 		// if(near_zero(diffuse_dir)) {
 		// 	diffuse_dir = hitRec.normal;
 		// }
@@ -101,13 +101,22 @@ fn material_scatter(ray_in : Ray) -> Ray {
 		specular_dir = normalize(mix(specular_dir, diffuse_dir, hitRec.material.roughness));
 
 		scattered = Ray(hitRec.p, normalize(mix(diffuse_dir, specular_dir, doSpecular)));
+
+		scatterRec.skip_pdf = false;
+
+		if(doSpecular == 1.0) {
+			scatterRec.skip_pdf = true;
+			scatterRec.skip_pdf_ray = scattered;
+		}
 	}
 
 	else if(hitRec.material.material_type == MIRROR)
 	{
 		var reflected = reflect(ray_in.dir, hitRec.normal);
-		// scattered = Ray(hitRec.p, reflected + hitRec.material.roughness * random_on_hemisphere(hitRec.normal));
-		scattered = Ray(hitRec.p, reflected + hitRec.material.roughness * uniform_random_in_unit_sphere());
+		scattered = Ray(hitRec.p, normalize(reflected + hitRec.material.roughness * uniform_random_in_unit_sphere()));
+
+		scatterRec.skip_pdf = true;
+		scatterRec.skip_pdf_ray = scattered;
 	}
 
 	else if(hitRec.material.material_type == GLASS)
@@ -129,7 +138,10 @@ fn material_scatter(ray_in : Ray) -> Ray {
 			direction = refract(unit_direction, hitRec.normal, ir);
 		}
 
-		scattered = Ray(hitRec.p, direction);
+		scattered = Ray(hitRec.p, normalize(direction));
+		
+		scatterRec.skip_pdf = true;
+		scatterRec.skip_pdf_ray = scattered;
 	}
 
 	return scattered;
@@ -210,7 +222,6 @@ fn ray_color(ray : Ray) -> vec3f {
 	var acc_light = vec3f(0);
 	var acc_color = vec3f(1);
 	// let a = 0.4 * (1 - (coords.y / screenDims.y));
-
 	
 	for(var i = 0; i < MAX_BOUNCES; i++)
 	{
@@ -230,17 +241,26 @@ fn ray_color(ray : Ray) -> vec3f {
 		// IMPORTANCE SAMPLING TOWARDS LIGHT
 		// diffuse scatter ray
 		let scatterred_surface = material_scatter(curRay);
+
+		if(scatterRec.skip_pdf) {
+			acc_light += emissionColor * acc_color;
+			acc_color *= 1 * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular);
+
+			curRay = scatterRec.skip_pdf_ray;
+			continue;
+		}
+
 		// ray sampled towards light
 		let scattered_light = get_random_on_quad(lights, hitRec.p);
 
 		var scattered = scattered_light;
-		if(rand2D() > 0.1) {
+		if(rand2D() > 0.2) {
 			scattered = scatterred_surface;
 		}
 
 		let lambertian_pdf = onb_lambertian_scattering_pdf(scattered);
 		let light_pdf = light_pdf(scattered, lights);
-		let pdf = 0.1 * light_pdf + 0.9 * lambertian_pdf;
+		let pdf = 0.2 * light_pdf + 0.8 * lambertian_pdf;
 
 		if(pdf <= 0.00000001) {
 			return emissionColor * acc_color;
@@ -253,7 +273,7 @@ fn ray_color(ray : Ray) -> vec3f {
 
 
 		// let scattered = material_scatter(curRay);
-		// let scattering_pdf = onb_lambertian_scattering_pdf(scattered);
+		// let scattering_pdf = lambertian_scattering_pdf(scattered);
 		// let pdf = scattering_pdf;
 
 		// if(pdf <= 0.00000001) {
@@ -265,13 +285,15 @@ fn ray_color(ray : Ray) -> vec3f {
 		
 		// curRay = scattered;
 
+		if(i > 5) {
 
-		// let p = max(acc_color.x, max(acc_color.y, acc_color.z));
-		// if(rand2D() > p) {
-		// 	break; 
-		// }
+			let p = max(acc_color.x, max(acc_color.y, acc_color.z));
+			if(rand2D() > p) {
+				break; 
+			}
 
-		// acc_color *= (1.0 / p);
+			acc_color *= (1.0 / p);
+		}
 	} 
 
 	return acc_light;

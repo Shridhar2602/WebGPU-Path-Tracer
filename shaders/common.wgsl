@@ -8,6 +8,7 @@ var<private> randState : u32 = 0u;
 var<private> coords : vec3f;
 
 var<private> hitRec : HitRecord;
+var<private> scatterRec : ScatterRecord;
 var<private> lights : Quad;
 
 fn at(ray : Ray, t : f32) -> vec3f {

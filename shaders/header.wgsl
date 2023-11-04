@@ -5,7 +5,7 @@ const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
 const NUM_SAMPLES = 1;
-const MAX_BOUNCES = 8;
+const MAX_BOUNCES = 20;
 const ROTATION = false;
 
 @group(0) @binding(0) var<uniform> screenDims: vec4<f32>;
@@ -101,4 +101,10 @@ struct HitRecord {
 	normal : vec3f,
 	front_face : bool,
 	material : Material,
+}
+
+struct ScatterRecord {
+	pdf : f32,
+	skip_pdf : bool,
+	skip_pdf_ray : Ray
 }
