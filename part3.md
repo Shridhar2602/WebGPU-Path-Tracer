@@ -223,7 +223,7 @@ Here’s our scene rendered at 5 `max_depth` without Russian Roulette, and at 10
 
 10,000 depth is ridiculous and totally unnecessary. The improvement in image quality would be negligible after 15-20 bounces (Russian Roulette will optimally decide this for us). Remarkably, we can run it at 60fps. Even at low bounce limits, Russian Roulette gives a huge performance boost by terminating low-contribution paths.
 
-Next up, Importance Sampling!
+Next up, [Importance Sampling!](./part4.md)
 
 ## References
 

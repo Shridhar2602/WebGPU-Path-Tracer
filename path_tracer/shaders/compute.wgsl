@@ -1,214 +1,10 @@
-@group(0) @binding(0) var<uniform> screenDims: vec4<f32>;
-@group(0) @binding(1) var<storage, read> sphere_objs: array<Sphere>;
-@group(0) @binding(2) var<storage, read> quad_objs: array<Quad>;
-@group(0) @binding(3) var<storage, read_write> framebuffer: array<vec4f>;
-@group(0) @binding(4) var<uniform> viewMatrix: mat4x4f;
-@group(0) @binding(5) var<storage, read> triangles: array<Triangle>;
-@group(0) @binding(6) var<storage, read> meshes: array<Mesh>;
-@group(0) @binding(7) var<storage, read> transforms : array<modelTransform>;
-@group(0) @binding(8) var<storage, read> materials: array<Material>;
-@group(0) @binding(9) var<storage, read> bvh: array<AABB>;
-
-var<private> NUM_SPHERES : i32;
-var<private> NUM_QUADS : i32;
-var<private> NUM_MESHES : i32;
-var<private> NUM_TRIANGLES : i32;
-var<private> NUM_AABB : i32;
-
-var<private> randState : u32 = 0u;
-var<private> coords : vec3f;
-
-var<private> hitRec : HitRecord;
-var<private> vp : viewPort;
-
-// PCG prng
-// https://www.shadertoy.com/view/XlGcRh
-fn rand2D() -> f32 
-{
-	randState = randState * 747796405u + 2891336453u;
-	var word : u32 = ((randState >> ((randState >> 28u) + 4u)) ^ randState) * 277803737u;
-	return f32((word >> 22u)^word) / 4294967295;
+fn reflectance(cosine : f32, ref_idx : f32) -> f32 {
+	var r0 = (1 - ref_idx) / (1 + ref_idx);
+	r0 = r0 * r0;
+	return r0 + (1 - r0) * pow((1 - cosine), 5);
 }
 
-fn randNormalDist() -> f32 {
-	let theta = 2 * PI * rand2D();
-	let rho = sqrt(-2 * log(rand2D()));
-	return rho * cos(theta);
-}
-
-fn random_double(min : f32, max : f32) -> f32 {
-	return min + (max - min) * rand2D();
-}
-
-fn at(ray : Ray, t : f32) -> vec3f {
-	return ray.origin + t * ray.dir;
-}
-
-fn near_zero(v : vec3f) -> bool {
-	let s = 1e-8;
-	return (abs(v[0]) < 0 && abs(v[1]) < 0 && abs(v[2]) < 0);
-}
-
-fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
-	
-	// let ray = Ray((vec4f(incidentRay.origin, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz, (vec4f(incidentRay.dir, 0) * transforms[i32(sphere.id)].invModelMatrix).xyz);
-
-	let oc = ray.origin - sphere.center;
-	let a = dot(ray.dir, ray.dir);
-	let half_b = dot(ray.dir, oc);
-	let c = dot(oc, oc) - sphere.r * sphere.r;
-	let discriminant = half_b*half_b - a*c;
-
-	if(discriminant < 0) {
-		return false;
-	}
-
-	let sqrtd = sqrt(discriminant);
-	var root = (-half_b - sqrtd) / a;
-	if(root <= tmin || root >= tmax)
-	{
-		root = (-half_b + sqrtd) / a;
-		if(root <= tmin || root >= tmax)
-		{
-			return false;
-		}
-	}
-
-	hitRec.t = root;
-	hitRec.p = at(ray, root);
-
-	// hitRec.p = (vec4f(hitRec.p, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz;
-	// hitRec.t = distance(hitRec.p, incidentRay.origin);
-
-	hitRec.normal = (hitRec.p - sphere.center) / sphere.r;
-
-	// hitRec.normal = normalize((vec4f(hitRec.normal, 0) * transpose(transforms[i32(sphere.id)].modelMatrix)).xyz);
-
-	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
-	if(hitRec.front_face == false)
-	{
-		hitRec.normal = -hitRec.normal;
-	}
-
-
-	hitRec.material = materials[i32(sphere.material_id)];
-	return true;
-}
-
-fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
-
-	if(dot(ray.dir, quad.normal) > 0) {
-		return false;
-	}
-
-	let denom = dot(quad.normal, ray.dir);
-
-	// No hit if the ray is paraller to the plane
-	if(abs(denom) < 1e-8) {
-		return false;
-	}
-
-	let t = (quad.D - dot(quad.normal, ray.origin)) / denom;
-	if(t <= tmin || t >= tmax) {
-		return false;
-	}
-
-	// determine if hit point lies within quarilateral
-	let intersection = at(ray, t);
-	let planar_hitpt_vector = intersection - quad.Q;
-	let alpha = dot(quad.w, cross(planar_hitpt_vector, quad.v));
-	let beta = dot(quad.w, cross(quad.u, planar_hitpt_vector));
-
-	if(alpha < 0 || 1 < alpha || beta < 0 || 1 < beta) {
-		return false;
-	}
-
-	hitRec.t = t;
-	hitRec.p = intersection;
-	hitRec.normal = quad.normal;
-	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
-	if(hitRec.front_face == false)
-	{
-		hitRec.normal = -hitRec.normal;
-	}
-
-	hitRec.material = materials[i32(quad.material_id)];
-	return true;
-}
-
-// https://stackoverflow.com/questions/42740765/
-// https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/moller-trumbore-ray-triangle-intersection.html
-fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray) -> bool {
-
-	let mesh = meshes[i32(tri.mesh_id)];
-	let invModelMatrix = transforms[mesh.global_id].invModelMatrix;
-	let modelMatrix = transforms[mesh.global_id].modelMatrix;
-
-	let ray = Ray((invModelMatrix * vec4f(incidentRay.origin, 1)).xyz, (invModelMatrix * vec4f(incidentRay.dir, 0.0)).xyz);
-
-	let AB = tri.B - tri.A;
-	let AC = tri.C - tri.A;
-	let normal = cross(AB, AC);
-	let ao = ray.origin - tri.A;
-	let dao = cross(ao, ray.dir);
-
-	let determinant = -dot(ray.dir, normal);
-	let invDet = 1 / determinant;
-
-	// calculate dist to triangle & barycentric coordinates of intersection point
-	let dst = dot(ao, normal) * invDet;
-	let u = dot(AC, dao) * invDet;
-	let v = -dot(AB, dao) * invDet;
-	let w = 1 - u - v;
-
-	// CULLING
-	if(determinant > -tmin && determinant < tmin) {
-		return false;
-	}
-
-	if(dst < tmin || dst > tmax || u < tmin || v < tmin || w < tmin)
-	{
-		return false;
-	}
-
-	hitRec.t = dst;
-	hitRec.p = at(incidentRay, dst);
-
-	// hitRec.p = (vec4f(at(ray, dst), 1) * modelMatrix).xyz;
-	// hitRec.t = length(hitRec.p - incidentRay.origin);
-
-	hitRec.normal = normalize(tri.normalA * w + tri.normalB * u + tri.normalC * v);
-	hitRec.normal = (transpose(invModelMatrix) * vec4f(hitRec.normal, 0)).xyz;
-
-	hitRec.front_face = dot(incidentRay.dir, hitRec.normal) < 0;
-	if(hitRec.front_face == false)
-	{
-		hitRec.normal = -hitRec.normal;
-	}
-	
-	hitRec.material = materials[mesh.material_id];
-
-	return true;
-}
-
-
-fn hit_aabb(box : AABB, ray : Ray) -> bool {
-	let invDir = 1 / ray.dir;
-
-	var tbot = (box.min - ray.origin) * invDir;
-	var ttop = (box.max - ray.origin) * invDir;
-	var tmin = min(ttop, tbot);
-	var tmax = max(ttop, tbot);
-	var t = max(tmin.xx, tmin.yz);
-	var t0 = max(t.x, t.y);
-	t = min(tmax.xx, tmax.yz);
-	var t1 = min(t.x, t.y);
-	
-	return t1 > max(t0, 0.0);
-}
-
-fn random_in_unit_sphere() -> vec3f {
-	
+fn uniform_random_in_unit_sphere() -> vec3f {
 	let phi = rand2D() * 2.0 * PI;
 	let theta = acos(2.0 * rand2D() - 1.0);
 
@@ -216,53 +12,111 @@ fn random_in_unit_sphere() -> vec3f {
 	let y = sin(theta) * sin(phi);
 	let z = cos(theta);
 
-	// let x = randNormalDist();
-	// let y = randNormalDist();
-	// let z = randNormalDist();
-
 	return normalize(vec3f(x, y, z));
 }
 
 fn random_in_unit_disk() -> vec3f {
 	let theta = 2 * PI * rand2D();
 	let r = sqrt(rand2D());
-
 	return normalize(vec3f(r * cos(theta), r * sin(theta), 0));
 }
 
-fn random_on_hemisphere(normal : vec3f) -> vec3f {
-	var on_unit_sphere = random_in_unit_sphere() + normal;
-	if(dot(on_unit_sphere, normal) > 0.0) {
-		return on_unit_sphere;
-	}
-	else {
-		return -on_unit_sphere;
-	}
+fn uniform_sampling_hemisphere() -> vec3f {
+    let on_unit_sphere = uniform_random_in_unit_sphere();
+	let sign_dot = select(1.0, 0.0, dot(on_unit_sphere, hitRec.normal) > 0.0);
+    return normalize(mix(on_unit_sphere, -on_unit_sphere, sign_dot));
 }
 
-fn reflectance(cosine : f32, ref_idx : f32) -> f32 {
-	var r0 = (1 - ref_idx) / (1 + ref_idx);
-	r0 = r0 * r0;
-	return r0 + (1 - r0) * pow((1 - cosine), 5);
+fn cosine_sampling_hemisphere() -> vec3f {
+	return uniform_random_in_unit_sphere() + hitRec.normal;
 }
 
+// generates a random direction weighted by PDF = cos_theta / PI relative to z axis
+fn cosine_sampling_wrt_Z() -> vec3f {
+	let r1 = rand2D();
+	let r2 = rand2D();
+
+	let phi = 2 * PI * r1;
+	let x = cos(phi) * sqrt(r2);
+	let y = sin(phi) * sqrt(r2);
+	let z = sqrt(1 - r2);
+
+	return vec3f(x, y, z);
+}
+
+fn lambertian_scattering_pdf(scattered : Ray) -> f32 {
+	let cos_theta = max(0, dot(hitRec.normal, scattered.dir));
+	return cos_theta / PI;
+}
+
+fn uniform_scattering_pdf(scattered : Ray) -> f32 {
+	return 1 / (2 * PI);
+}
+
+var<private> unit_w : vec3f;
+var<private> u : vec3f;
+var<private> v : vec3f;
+// creates an orthonormal basis 
+fn onb_build_from_w(w : vec3f) -> mat3x3f {
+	unit_w = normalize(w);
+	let a = select(vec3f(1, 0, 0), vec3f(0, 1, 0), abs(unit_w.x) > 0.9);
+	v = normalize(cross(unit_w, a));
+	u = cross(unit_w, v);
+	
+	return mat3x3f(u, v, unit_w);
+}
+
+fn onb_get_local(a : vec3f) -> vec3f {
+	return u * a.x + v * a.y + unit_w * a.z;
+}
+
+fn onb_lambertian_scattering_pdf(scattered : Ray) -> f32 {
+	let cosine_theta = dot(normalize(scattered.dir), unit_w);
+	return max(0, cosine_theta/PI);
+}
+
+var<private> doSpecular : f32;
 fn material_scatter(ray_in : Ray) -> Ray {
 
 	var scattered = Ray(vec3f(0), vec3f(0));
 	if(hitRec.material.material_type == LAMBERTIAN)
 	{
-		var scatter_dir = random_on_hemisphere(hitRec.normal);
-		if(near_zero(scatter_dir))
-		{
-			scatter_dir = hitRec.normal;
+
+		let uvw = onb_build_from_w(hitRec.normal);
+		var diffuse_dir = cosine_sampling_wrt_Z();
+		diffuse_dir = normalize(onb_get_local(diffuse_dir));
+
+		scattered = Ray(hitRec.p, diffuse_dir);
+
+		doSpecular = select(0.0, 1.0, rand2D() < hitRec.material.specularStrength);
+
+		// var diffuse_dir = uniform_sampling_hemisphere();
+		// var diffuse_dir = cosine_sampling_hemisphere();
+		// if(near_zero(diffuse_dir)) {
+		// 	diffuse_dir = hitRec.normal;
+		// }
+
+		// scattered = Ray(hitRec.p, normalize(diffuse_dir));
+		var specular_dir = reflect(ray_in.dir, hitRec.normal);
+		specular_dir = normalize(mix(specular_dir, diffuse_dir, hitRec.material.roughness));
+
+		scattered = Ray(hitRec.p, normalize(mix(diffuse_dir, specular_dir, doSpecular)));
+
+		scatterRec.skip_pdf = false;
+
+		if(doSpecular == 1.0) {
+			scatterRec.skip_pdf = true;
+			scatterRec.skip_pdf_ray = scattered;
 		}
-		scattered = Ray(hitRec.p, scatter_dir);
 	}
 
 	else if(hitRec.material.material_type == MIRROR)
 	{
-		var reflected = reflect(normalize(ray_in.dir), hitRec.normal);
-		scattered = Ray(hitRec.p, reflected + hitRec.material.fuzz * random_on_hemisphere(hitRec.normal));
+		var reflected = reflect(ray_in.dir, hitRec.normal);
+		scattered = Ray(hitRec.p, normalize(reflected + hitRec.material.roughness * uniform_random_in_unit_sphere()));
+
+		scatterRec.skip_pdf = true;
+		scatterRec.skip_pdf_ray = scattered;
 	}
 
 	else if(hitRec.material.material_type == GLASS)
@@ -284,10 +138,78 @@ fn material_scatter(ray_in : Ray) -> Ray {
 			direction = refract(unit_direction, hitRec.normal, ir);
 		}
 
-		scattered = Ray(hitRec.p, direction);
+		scattered = Ray(hitRec.p, normalize(direction));
+		
+		scatterRec.skip_pdf = true;
+		scatterRec.skip_pdf_ray = scattered;
 	}
 
 	return scattered;
+}
+
+// fn get_light_pdf() -> vec3f {
+// 	let on_light = vec3f((rand2D() * 2 - 1) * 0.35, 1, (rand2D() * 2 - 1) * 0.3);
+// 	var to_light = on_light - hitRec.p;
+// 	let distance_squared = length(to_light) * length(to_light);
+// 	to_light = normalize(to_light);
+
+// 	let light_area = 0.7 * 0.6;
+// 	let light_cosine = abs(to_light.y);
+// 	var pdf = distance_squared / (light_cosine * light_cosine);
+
+// 	if(dot(to_light, hitRec.normal) < 0) {
+// 		return 0;
+// 	}
+
+// 	if(light_cosine < 0.000001) {
+// 		return 0;
+// 	}
+
+// 	let scattered = Ray(hitRec.p, to_light);
+// }
+
+fn get_random_on_quad(q : Quad, origin : vec3f) -> Ray {
+	let p = q.Q + (rand2D() * q.u) + (rand2D() * q.v);
+	return Ray(origin, normalize(p - origin));
+}
+
+fn light_pdf(ray : Ray, quad : Quad) -> f32 {
+
+	if(dot(ray.dir, quad.normal) > 0) {
+		return MIN_FLOAT;
+	}
+
+	let denom = dot(quad.normal, ray.dir);
+
+	if(abs(denom) < 1e-8) {
+		return MIN_FLOAT;
+	}
+
+	let t = (quad.D - dot(quad.normal, ray.origin)) / denom;
+	if(t <= 0.001 || t >= MAX_FLOAT) {
+		return MIN_FLOAT;
+	}
+
+	let intersection = at(ray, t);
+	let planar_hitpt_vector = intersection - quad.Q;
+	let alpha = dot(quad.w, cross(planar_hitpt_vector, quad.v));
+	let beta = dot(quad.w, cross(quad.u, planar_hitpt_vector));
+
+	if(alpha < 0 || 1 < alpha || beta < 0 || 1 < beta) {
+		return MIN_FLOAT;
+	}
+
+	var hitNormal = quad.normal;
+	let front_face = dot(ray.dir, quad.normal) < 0;
+	if(front_face == false)
+	{
+		hitNormal = -hitNormal;
+	}
+
+	let distance_squared = t * t * length(ray.dir) * length(ray.dir);
+	let cosine = abs(dot(ray.dir, hitNormal) / length(ray.dir));
+
+	return (distance_squared / (cosine * length(cross(lights.u, lights.v))));
 }
 
 var<private> background_color = vec3f(0.7, 0.7, 0.7);
@@ -300,7 +222,7 @@ fn ray_color(ray : Ray) -> vec3f {
 	var acc_light = vec3f(0);
 	var acc_color = vec3f(1);
 	// let a = 0.4 * (1 - (coords.y / screenDims.y));
-
+	
 	for(var i = 0; i < MAX_BOUNCES; i++)
 	{
 		if(hit2(curRay) == false)
@@ -310,11 +232,69 @@ fn ray_color(ray : Ray) -> vec3f {
 			break;
 		}
 
-		acc_light += hitRec.material.emissionColor * acc_color;
-		acc_color *= hitRec.material.color;
+		// unidirectional light
+		var emissionColor = hitRec.material.emissionColor;
+		if(!hitRec.front_face) {
+			emissionColor = vec3f(0);
+		}
 
-		curRay = material_scatter(curRay);
-	}
+		// IMPORTANCE SAMPLING TOWARDS LIGHT
+		// diffuse scatter ray
+		let scatterred_surface = material_scatter(curRay);
+
+		if(scatterRec.skip_pdf) {
+			acc_light += emissionColor * acc_color;
+			acc_color *= 1 * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular);
+
+			curRay = scatterRec.skip_pdf_ray;
+			continue;
+		}
+
+		// ray sampled towards light
+		let scattered_light = get_random_on_quad(lights, hitRec.p);
+
+		var scattered = scattered_light;
+		if(rand2D() > 0.2) {
+			scattered = scatterred_surface;
+		}
+
+		let lambertian_pdf = onb_lambertian_scattering_pdf(scattered);
+		let light_pdf = light_pdf(scattered, lights);
+		let pdf = 0.2 * light_pdf + 0.8 * lambertian_pdf;
+
+		if(pdf <= 0.00000001) {
+			return emissionColor * acc_color;
+		}
+
+		acc_light += emissionColor * acc_color;
+		acc_color *= ((1 * lambertian_pdf * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular)) / pdf);
+
+		curRay = scattered;
+
+
+		// let scattered = material_scatter(curRay);
+		// let scattering_pdf = lambertian_scattering_pdf(scattered);
+		// let pdf = scattering_pdf;
+
+		// if(pdf <= 0.00000001) {
+		// 	return emissionColor * acc_color;
+		// }
+
+		// acc_light += emissionColor * acc_color;
+		// acc_color *= ((1 * scattering_pdf * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular)) / pdf);
+		
+		// curRay = scattered;
+
+		if(i > 5) {
+
+			let p = max(acc_color.x, max(acc_color.y, acc_color.z));
+			if(rand2D() > p) {
+				break; 
+			}
+
+			acc_color *= (1.0 / p);
+		}
+	} 
 
 	return acc_light;
 }
@@ -372,6 +352,7 @@ fn hit2(ray : Ray) -> bool
 						hit_anything = true;
 						closest_so_far = hitRec.t;
 					}
+					break;
 				}
 
 				case 1: {
@@ -380,6 +361,7 @@ fn hit2(ray : Ray) -> bool
 						hit_anything = true;
 						closest_so_far = hitRec.t;
 					}
+					break;
 				}
 
 				case 2: {
@@ -455,10 +437,10 @@ fn antialiased_color() -> vec3f {
 		);
 		pixColor += ray_color(ray);
 	}
-	pixColor /= NUM_SAMPLES;
 
-	// sqrt for gamma correction
-	return pixColor.xyz;
+	pixColor /= NUM_SAMPLES;
+	// pixColor = aces_approx(pixColor);
+	return pixColor;
 }
 
 var<private> fovFactor : f32;
@@ -492,13 +474,13 @@ fn camera_get_ray2(s : f32, t : f32) -> Ray {
 
 	randState = i + u32(screenDims.z) * 719393;
 
+	get_lights();
 	var fragColor = antialiased_color();
 	var accFragColor = fragColor.xyz;
 
 	if(screenDims[3] == 0)
 	{
-		let weight = 1.0 / (screenDims.z + 1);
-		accFragColor = framebuffer[i].xyz * (1 - weight) + fragColor * weight;
+		accFragColor = framebuffer[i].xyz + fragColor;
 	}
 
 	framebuffer[i] = vec4f(accFragColor.xyz, 1.0);

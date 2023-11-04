@@ -8,6 +8,7 @@ export class Mesh {
 
 		this.triangles = this.load_mesh(data, mesh_id, local_id);
 		this.numTriangle = this.triangles.length;
+		console.log(this.numTriangle)
 		this.mesh = this.create_mesh(this.numTriangle, offset, id, material_id)
 		this.transform = new Transform();
 	}
