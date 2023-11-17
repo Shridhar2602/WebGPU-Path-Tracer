@@ -273,19 +273,20 @@ fn ray_color(ray : Ray) -> vec3f {
 
 
 		// let scattered = material_scatter(curRay);
-		// let scattering_pdf = lambertian_scattering_pdf(scattered);
-		// let pdf = scattering_pdf;
+		// // let scattering_pdf = lambertian_scattering_pdf(scattered);
+		// // let pdf = scattering_pdf;
 
-		// if(pdf <= 0.00000001) {
-		// 	return emissionColor * acc_color;
-		// }
+		// // if(pdf <= 0.00000001) {
+		// // 	return emissionColor * acc_color;
+		// // }
 
 		// acc_light += emissionColor * acc_color;
-		// acc_color *= ((1 * scattering_pdf * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular)) / pdf);
+		// // acc_color *= ((1 * scattering_pdf * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular)) / pdf);
+		// acc_color *= ((1 * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular)));
 		
 		// curRay = scattered;
 
-		if(i > 5) {
+		if(i > 2) {
 
 			let p = max(acc_color.x, max(acc_color.y, acc_color.z));
 			if(rand2D() > p) {
@@ -306,7 +307,7 @@ fn hit(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_TRIANGLES; i++)
 	{
-		if(hit_triangle(triangles[i], 0.00001, closest_so_far, ray))
+		if(hit_triangle(triangles[i], 0.0000001, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -315,7 +316,7 @@ fn hit(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_SPHERES; i++)
 	{
-		if(hit_sphere(sphere_objs[i], 0.00001, closest_so_far, ray))
+		if(hit_sphere(sphere_objs[i], 0.0000001, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -324,7 +325,7 @@ fn hit(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_QUADS; i++)
 	{
-		if(hit_quad(quad_objs[i], 0.00001, closest_so_far, ray))
+		if(hit_quad(quad_objs[i], 0.0000001, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -345,34 +346,42 @@ fn hit2(ray : Ray) -> bool
 		if(hit_aabb(bvh[i], ray)) {
 
 			let t = i32(bvh[i].prim_type);
-			switch t {
-				case 0: {
-					if(hit_sphere(sphere_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
-					{
-						hit_anything = true;
-						closest_so_far = hitRec.t;
-					}
-					break;
-				}
+			// switch t {
+			// 	// case 0: {
+			// 	// 	if(hit_sphere(sphere_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
+			// 	// 	{
+			// 	// 		hit_anything = true;
+			// 	// 		closest_so_far = hitRec.t;
+			// 	// 	}
+			// 	// 	break;
+			// 	// }
 
-				case 1: {
-					if(hit_quad(quad_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
-					{
-						hit_anything = true;
-						closest_so_far = hitRec.t;
-					}
-					break;
-				}
+			// 	// case 1: {
+			// 	// 	if(hit_quad(quad_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
+			// 	// 	{
+			// 	// 		hit_anything = true;
+			// 	// 		closest_so_far = hitRec.t;
+			// 	// 	}
+			// 	// 	break;
+			// 	// }
 
-				case 2: {
-					if(hit_triangle(triangles[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
-					{
-						hit_anything = true;
-						closest_so_far = hitRec.t;
-					}
-				}
+			// 	case 2: {
+			// 		if(hit_triangle(triangles[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
+			// 		{
+			// 			hit_anything = true;
+			// 			closest_so_far = hitRec.t;
+			// 		}
+			// 	}
 
-				default: {}
+			// 	default: {}
+			// }
+
+			if(t == 2) {
+				if(hit_triangle(triangles[i32(bvh[i].prim_id)], 0.000001, closest_so_far, ray))
+				{
+					hit_anything = true;
+					closest_so_far = hitRec.t;
+				}
 			}
 
 			i++;
@@ -384,7 +393,7 @@ fn hit2(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_SPHERES; i++)
 	{
-		if(hit_sphere(sphere_objs[i], 0.00001, closest_so_far, ray))
+		if(hit_sphere(sphere_objs[i], 0.000001, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -393,7 +402,7 @@ fn hit2(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_QUADS; i++)
 	{
-		if(hit_quad(quad_objs[i], 0.00001, closest_so_far, ray))
+		if(hit_quad(quad_objs[i], 0.000001, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -409,36 +418,36 @@ fn hit2(ray : Ray) -> bool
 fn antialiased_color() -> vec3f {
 	
 	var pixColor = vec3f(0, 0, 0);
-	// let sqrt_spp = sqrt(NUM_SAMPLES);
-	// let recip_sqrt_spp = 1.0 / f32(i32(sqrt_spp));
-	// var count = 0.0;
+	let sqrt_spp = sqrt(NUM_SAMPLES);
+	let recip_sqrt_spp = 1.0 / f32(i32(sqrt_spp));
+	var count = 0.0;
 
 	// stratified sampling
-	// for(var i = 0.0; i < sqrt_spp; i+= 1.0)
-	// {
-	// 	for(var j = 0.0; j < sqrt_spp; j += 1.0)
-	// 	{
-	// 		let ray = camera_get_ray2(
-	// 			(screenDims.x / screenDims.y) * (2 * ((coords.x - 0.5 + (recip_sqrt_spp * (i + rand2D()))) / screenDims.x) - 1),
-	// 			-1 * (2 * ((coords.y - 0.5 + (recip_sqrt_spp * (j + rand2D()))) / screenDims.y) - 1)
-	// 		);
-	// 		pixColor += ray_color(ray);
-
-	// 		count += 1;
-	// 	}
-	// }
-	// pixColor /= count;
-
-	for(var i = 0; i < NUM_SAMPLES; i += 1)
+	for(var i = 0.0; i < sqrt_spp; i+= 1.0)
 	{
-		let ray = camera_get_ray2(
-			(screenDims.x / screenDims.y) * (2 * ((coords.x  - 0.5 + rand2D()) / screenDims.x) - 1), 
-			-1 * (2 * ((coords.y  - 0.5 + rand2D()) / screenDims.y) - 1)
-		);
-		pixColor += ray_color(ray);
-	}
+		for(var j = 0.0; j < sqrt_spp; j += 1.0)
+		{
+			let ray = camera_get_ray2(
+				(screenDims.x / screenDims.y) * (2 * ((coords.x - 0.5 + (recip_sqrt_spp * (i + rand2D()))) / screenDims.x) - 1),
+				-1 * (2 * ((coords.y - 0.5 + (recip_sqrt_spp * (j + rand2D()))) / screenDims.y) - 1)
+			);
+			pixColor += ray_color(ray);
 
-	pixColor /= NUM_SAMPLES;
+			count += 1;
+		}
+	}
+	pixColor /= count;
+
+	// for(var i = 0; i < NUM_SAMPLES; i += 1)
+	// {
+	// 	let ray = camera_get_ray2(
+	// 		(screenDims.x / screenDims.y) * (2 * ((coords.x  - 0.5 + rand2D()) / screenDims.x) - 1), 
+	// 		-1 * (2 * ((coords.y  - 0.5 + rand2D()) / screenDims.y) - 1)
+	// 	);
+	// 	pixColor += ray_color(ray);
+	// }
+
+	// pixColor /= NUM_SAMPLES;
 	// pixColor = aces_approx(pixColor);
 	return pixColor;
 }

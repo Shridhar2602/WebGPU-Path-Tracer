@@ -49,7 +49,7 @@ async function main(device) {
 
 	var stats = new Stats();
 	stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
-	// document.body.appendChild( stats.dom );
+	document.body.appendChild( stats.dom );
   
 	var str_header = await loadTextfile('./shaders/header.wgsl');
 	var str_common = await loadTextfile('./shaders/common.wgsl');
@@ -291,13 +291,16 @@ async function main(device) {
 	var frame = 0.0;
 	let startTime = performance.now();
 	var avgTime = 0.0;
+	let targetFPS = 61;
+	let frameDelay = 1000 / targetFPS;
+
 	async function render2(time) {
 		time = 0.001;
 		frame += 1.0;
 		stats.begin();
 
-		if(frame % 500 == 0)
-			console.log(frame);
+		// if(frame % 500 == 0)
+		// 	console.log(frame);
 
 		screenDims[2] = frame;
 		screenDims[3] = camera.MOVING;
@@ -341,14 +344,21 @@ async function main(device) {
 	  	const renderCommandBuffer = renderEncoder.finish();
 	  	device.queue.submit([renderCommandBuffer]);
 
-		let currentTime = performance.now();
-		avgTime += (currentTime - startTime);
-		startTime = currentTime;
+		// let currentTime = performance.now();
+		// avgTime += (currentTime - startTime);
+		// startTime = currentTime;
 
 		// if(frame % 60 == 0) {
 		// 	console.log(avgTime / 60);
 		// 	avgTime = 0;
 		// }
+
+		let currentTime = performance.now();
+		const elapsed = currentTime - startTime;
+		if(elapsed < frameDelay) {
+			await new Promise((resolve) => setTimeout(resolve, frameDelay - elapsed));
+		}
+		startTime = performance.now();
 
 		stats.end();
 	  	requestAnimationFrame(render2);
