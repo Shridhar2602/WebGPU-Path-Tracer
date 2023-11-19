@@ -91,15 +91,6 @@ async function main(device) {
 	await scene.init_mesh_data();
 	scene.create_meshes();
 
-	var triangles = scene.get_triangles();
-
-	const triBuffer = device.createBuffer({
-		label: 'tri buffer',
-		size: triangles.byteLength,
-		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-	});
-	device.queue.writeBuffer(triBuffer, 0, triangles);
-
 	var meshes = scene.get_meshes();
 	const meshBuffer = device.createBuffer({
 		label: 'mesh buffer',
@@ -145,7 +136,8 @@ async function main(device) {
 	device.queue.writeBuffer(transformBuffer, 0, transforms);
 
 	scene.create_bvh();
-	var bvh = scene.get_bvh();
+	var bvh = scene.get_bvh()
+
 	const bvhBuffer = device.createBuffer({
 		label: 'bvh buffer',
 		size: bvh.byteLength,
@@ -153,6 +145,14 @@ async function main(device) {
 	});
 	device.queue.writeBuffer(bvhBuffer, 0, bvh);
 
+	var triangles = scene.get_triangles();
+
+	const triBuffer = device.createBuffer({
+		label: 'tri buffer',
+		size: triangles.byteLength,
+		usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	});
+	device.queue.writeBuffer(triBuffer, 0, triangles);
 
 	// A screen sized buffer to store the rgb values
 	var frame = new Float32Array(WIDTH * HEIGHT * 4).fill(0);

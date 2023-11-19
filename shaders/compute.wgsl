@@ -268,7 +268,6 @@ fn ray_color(ray : Ray) -> vec3f {
 
 		acc_light += emissionColor * acc_color;
 		acc_color *= ((1 * lambertian_pdf * mix(hitRec.material.color, hitRec.material.specularColor, doSpecular)) / pdf);
-
 		curRay = scattered;
 
 
@@ -346,41 +345,17 @@ fn hit2(ray : Ray) -> bool
 		if(hit_aabb(bvh[i], ray)) {
 
 			let t = i32(bvh[i].prim_type);
-			// switch t {
-			// 	// case 0: {
-			// 	// 	if(hit_sphere(sphere_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
-			// 	// 	{
-			// 	// 		hit_anything = true;
-			// 	// 		closest_so_far = hitRec.t;
-			// 	// 	}
-			// 	// 	break;
-			// 	// }
-
-			// 	// case 1: {
-			// 	// 	if(hit_quad(quad_objs[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
-			// 	// 	{
-			// 	// 		hit_anything = true;
-			// 	// 		closest_so_far = hitRec.t;
-			// 	// 	}
-			// 	// 	break;
-			// 	// }
-
-			// 	case 2: {
-			// 		if(hit_triangle(triangles[i32(bvh[i].prim_id)], 0.00001, closest_so_far, ray))
-			// 		{
-			// 			hit_anything = true;
-			// 			closest_so_far = hitRec.t;
-			// 		}
-			// 	}
-
-			// 	default: {}
-			// }
-
+			
 			if(t == 2) {
-				if(hit_triangle(triangles[i32(bvh[i].prim_id)], 0.000001, closest_so_far, ray))
-				{
-					hit_anything = true;
-					closest_so_far = hitRec.t;
+
+				let startPrim = i32(bvh[i].prim_id);
+				let countPrim = i32(bvh[i].prim_count);
+				for(var j = 0; j < countPrim; j++) {
+					if(hit_triangle(triangles[startPrim + j], 0.000001, closest_so_far, ray))
+					{
+						hit_anything = true;
+						closest_so_far = hitRec.t;
+					}
 				}
 			}
 
