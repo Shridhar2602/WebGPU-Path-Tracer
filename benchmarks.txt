@@ -1,0 +1,27 @@
+Scene : Stanford Bunny (69451 triangles)
+	1) BVH - Random
+		build - 438ms
+		run - 35-42fps, 28ms
+
+	2) BVH - SAH
+		build - 1653ms
+		run - 69fps, 14.5ms
+
+	3) BVH - Mid-Point
+		build - 560ms
+		run - 66fps, 15.2ms
+
+	4) BVH Traversal - stack based + front-to-back 
+		build - Mid-Point
+		run - 104fps, 9.6ms
+
+Scene : Stanford Dragon (297972 triangles)
+	build - 4483ms
+	run - 62fps, 16.1ms
+
+Scene : Buddha + Armadillo (198577 triangles)
+	build - 2155ms
+	run - 41fps, 24.1ms
+
+	build - 5754ms
+	run - 44fps, 22.1ms

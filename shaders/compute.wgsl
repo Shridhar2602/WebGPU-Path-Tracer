@@ -214,7 +214,7 @@ fn light_pdf(ray : Ray, quad : Quad) -> f32 {
 
 var<private> background_color = vec3f(0.7, 0.7, 0.7);
 // var<private> background_color = vec3f(0.1, 0.7, 0.88);
-// var<private> background_color = vec3f(19/255.0, 24/255.0, 98/255.0);
+// var<private> background_color = vec3f(19/255.0 * 5, 24/255.0 * 5, 98/255.0 * 5);
 // var<private> background_color = vec3f(0, 0, 0);
 fn ray_color(ray : Ray) -> vec3f {
 
@@ -225,7 +225,7 @@ fn ray_color(ray : Ray) -> vec3f {
 	
 	for(var i = 0; i < MAX_BOUNCES; i++)
 	{
-		if(hit2(curRay) == false)
+		if(hit3(curRay) == false)
 		{
 			// return acc_color * ((1 - a) * vec3f(1) + a * background_color);
 			acc_light += (1 * background_color) * acc_color;
@@ -286,7 +286,6 @@ fn ray_color(ray : Ray) -> vec3f {
 		// curRay = scattered;
 
 		if(i > 2) {
-
 			let p = max(acc_color.x, max(acc_color.y, acc_color.z));
 			if(rand2D() > p) {
 				break; 
@@ -339,10 +338,11 @@ fn hit2(ray : Ray) -> bool
 	var closest_so_far = MAX_FLOAT;
 	var hit_anything = false;
 
+	var invDir = 1 / ray.dir;
 	var i = 0;
 	while(i < NUM_AABB && i != -1) {
 		
-		if(hit_aabb(bvh[i], ray)) {
+		if(hit_aabb(bvh[i], ray_tmin, closest_so_far, ray, invDir)) {
 
 			let t = i32(bvh[i].prim_type);
 			
@@ -351,7 +351,7 @@ fn hit2(ray : Ray) -> bool
 				let startPrim = i32(bvh[i].prim_id);
 				let countPrim = i32(bvh[i].prim_count);
 				for(var j = 0; j < countPrim; j++) {
-					if(hit_triangle(triangles[startPrim + j], 0.000001, closest_so_far, ray))
+					if(hit_triangle(triangles[startPrim + j], ray_tmin, closest_so_far, ray))
 					{
 						hit_anything = true;
 						closest_so_far = hitRec.t;
@@ -361,6 +361,7 @@ fn hit2(ray : Ray) -> bool
 
 			i++;
 		}
+
 		else {
 			i = i32(bvh[i].skip_link);
 		}
@@ -368,7 +369,7 @@ fn hit2(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_SPHERES; i++)
 	{
-		if(hit_sphere(sphere_objs[i], 0.000001, closest_so_far, ray))
+		if(hit_sphere(sphere_objs[i], ray_tmin, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
@@ -377,10 +378,91 @@ fn hit2(ray : Ray) -> bool
 
 	for(var i = 0; i < NUM_QUADS; i++)
 	{
-		if(hit_quad(quad_objs[i], 0.000001, closest_so_far, ray))
+		if(hit_quad(quad_objs[i], ray_tmin, closest_so_far, ray))
 		{
 			hit_anything = true;
 			closest_so_far = hitRec.t;
+		}
+	}
+
+	return hit_anything;
+}
+
+fn hit3(ray : Ray) -> bool
+{
+	var closest_so_far = MAX_FLOAT;
+	var hit_anything = false;
+
+	for(var i = 0; i < NUM_SPHERES; i++)
+	{
+		if(hit_sphere(sphere_objs[i], ray_tmin, closest_so_far, ray))
+		{
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+		}
+	}
+
+	for(var i = 0; i < NUM_QUADS; i++)
+	{
+		if(hit_quad(quad_objs[i], ray_tmin, closest_so_far, ray))
+		{
+			hit_anything = true;
+			closest_so_far = hitRec.t;
+		}
+	}
+
+	var invDir = 1 / ray.dir;
+	var toVisitOffset = 0;
+	var curNodeIdx = 0;
+	var node = bvh[curNodeIdx];
+	while(true) {
+		node = bvh[curNodeIdx];
+
+		if(hit_aabb(node, ray_tmin, closest_so_far, ray, invDir)) {
+			if(i32(node.prim_type) == 2) {
+
+				let startPrim = i32(node.prim_id);
+				let countPrim = i32(node.prim_count);
+				for(var j = 0; j < countPrim; j++) {
+					if(hit_triangle(triangles[startPrim + j], ray_tmin, closest_so_far, ray))
+					{
+						hit_anything = true;
+						closest_so_far = hitRec.t;
+					}
+				}
+
+				if(toVisitOffset == 0) {
+					break;
+				}
+				toVisitOffset--;
+				curNodeIdx = stack[toVisitOffset];
+			}
+
+			else {
+				if(ray.dir[i32(node.axis)] < 0) {
+					stack[toVisitOffset] = curNodeIdx + 1;
+					toVisitOffset++;
+					curNodeIdx = i32(node.right_offset);
+				}
+				else {
+					stack[toVisitOffset] = i32(node.right_offset);
+					toVisitOffset++;
+					curNodeIdx++;
+				}
+			}
+		}
+
+		else {
+			if(toVisitOffset == 0) {
+				break;
+			}
+
+			toVisitOffset--;
+			curNodeIdx = stack[toVisitOffset];
+		}
+
+		if(toVisitOffset >= 64) {
+			break;
 		}
 	}
 

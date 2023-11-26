@@ -10,6 +10,9 @@ var<private> coords : vec3f;
 var<private> hitRec : HitRecord;
 var<private> scatterRec : ScatterRecord;
 var<private> lights : Quad;
+var<private> ray_tmin : f32 = 0.000001;
+var<private> ray_tmax : f32 = MAX_FLOAT;
+var<private> stack : array<i32, 20>;
 
 fn at(ray : Ray, t : f32) -> vec3f {
 	return ray.origin + t * ray.dir;
@@ -139,22 +142,22 @@ fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray) -> bo
 	let AB = tri.B - tri.A;
 	let AC = tri.C - tri.A;
 	let normal = cross(AB, AC);
+	let determinant = -dot(ray.dir, normal);
+
+	// CULLING
+	if(abs(determinant) < tmin) {
+		return false;
+	}
+
 	let ao = ray.origin - tri.A;
 	let dao = cross(ao, ray.dir);
 
-	let determinant = -dot(ray.dir, normal);
-	let invDet = 1 / determinant;
-
 	// calculate dist to triangle & barycentric coordinates of intersection point
+	let invDet = 1 / determinant;
 	let dst = dot(ao, normal) * invDet;
 	let u = dot(AC, dao) * invDet;
 	let v = -dot(AB, dao) * invDet;
 	let w = 1 - u - v;
-
-	// CULLING
-	if(determinant > -tmin && determinant < tmin) {
-		return false;
-	}
 
 	if(dst < tmin || dst > tmax || u < tmin || v < tmin || w < tmin)
 	{
@@ -181,19 +184,18 @@ fn hit_triangle(tri : Triangle, tmin : f32, tmax : f32, incidentRay : Ray) -> bo
 	return true;
 }
 
-fn hit_aabb(box : AABB, ray : Ray) -> bool {
-	let invDir = 1 / ray.dir;
+// https://medium.com/@bromanz/another-view-on-the-classic-ray-aabb-intersection-algorithm-for-bvh-traversal-41125138b525
+fn hit_aabb(box : AABB, tmin : f32, tmax : f32, ray : Ray, invDir : vec3f) -> bool {
+	var t0s = (box.min - ray.origin) * invDir;
+	var t1s = (box.max - ray.origin) * invDir;
 
-	var tbot = (box.min - ray.origin) * invDir;
-	var ttop = (box.max - ray.origin) * invDir;
-	var tmin = min(ttop, tbot);
-	var tmax = max(ttop, tbot);
-	var t = max(tmin.xx, tmin.yz);
-	var t0 = max(t.x, t.y);
-	t = min(tmax.xx, tmax.yz);
-	var t1 = min(t.x, t.y);
+	var tsmaller = min(t0s, t1s);
+	var tbigger = max(t0s, t1s);
+
+	var t_min = max(tmin, max(tsmaller.x, max(tsmaller.y, tsmaller.z)));
+	var t_max = min(tmax, min(tbigger.x, min(tbigger.y, tbigger.z)));
 	
-	return t1 > max(t0, 0.0);
+	return t_max > t_min;
 }
 
 fn get_lights() -> bool {

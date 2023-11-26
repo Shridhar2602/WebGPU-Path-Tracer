@@ -303,11 +303,12 @@ async function main(device) {
 		// 	console.log(frame);
 
 		screenDims[2] = frame;
-		screenDims[3] = camera.MOVING;
+		screenDims[3] = (camera.MOVING || camera.keyPress) ? 1 : 0;
 
-		if(camera.MOVING)
+		if(camera.MOVING || camera.keyPress)
 		{
 			frame = 1;
+			camera.keyPress = 0;
 		}
 
 		device.queue.writeBuffer(dimsBuffer, 0, screenDims);
