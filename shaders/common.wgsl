@@ -73,7 +73,7 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
 	// hitRec.p = (vec4f(hitRec.p, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz;
 	// hitRec.t = distance(hitRec.p, incidentRay.origin);
 
-	hitRec.normal = (hitRec.p - sphere.center) / sphere.r;
+	hitRec.normal = normalize((hitRec.p - sphere.center) / sphere.r);
 
 	// hitRec.normal = normalize((vec4f(hitRec.normal, 0) * transpose(transforms[i32(sphere.id)].modelMatrix)).xyz);
 
@@ -85,6 +85,79 @@ fn hit_sphere(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
 
 	hitRec.material = materials[i32(sphere.material_id)];
+	return true;
+}
+
+fn hit_sphere_local(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> f32 {
+	
+	// let ray = Ray((vec4f(incidentRay.origin, 1) * transforms[i32(sphere.id)].invModelMatrix).xyz, (vec4f(incidentRay.dir, 0) * transforms[i32(sphere.id)].invModelMatrix).xyz);
+	let oc = ray.origin - sphere.center;
+	let a = dot(ray.dir, ray.dir);
+	let half_b = dot(ray.dir, oc);
+	let c = dot(oc, oc) - sphere.r * sphere.r;
+	let discriminant = half_b*half_b - a*c;
+
+	if(discriminant < 0) {
+		return MAX_FLOAT + 1;
+	}
+
+	let sqrtd = sqrt(discriminant);
+	var root = (-half_b - sqrtd) / a;
+	if(root <= tmin || root >= tmax)
+	{
+		root = (-half_b + sqrtd) / a;
+		if(root <= tmin || root >= tmax)
+		{
+			return MAX_FLOAT + 1;
+		}
+	}
+
+	return root;
+}
+
+fn hit_volume(sphere : Sphere, tmin : f32, tmax : f32, ray : Ray) -> bool {
+
+	var rec1 = hit_sphere_local(sphere, -MAX_FLOAT, MAX_FLOAT, ray);
+	if(rec1 == MAX_FLOAT + 1) {
+		return false;
+	}
+
+	var rec2 = hit_sphere_local(sphere, rec1 + 0.0001, MAX_FLOAT, ray);
+	if(rec2 == MAX_FLOAT + 1) {
+		return false;
+	}
+
+	if(rec1 < tmin) {
+		rec1 = tmin;
+	}
+
+	if(rec2 > tmax) {
+		rec2 = tmax;
+	}
+
+	if(rec1 >= rec2) {
+		return false;
+	}
+
+	if(rec1 < 0) {
+		rec1 = 0;
+	}
+
+	hitRec.material = materials[i32(sphere.material_id)];
+
+	let ray_length = length(ray.dir);
+	let dist_inside = (rec2 - rec1) * ray_length;
+	let hit_dist = hitRec.material.roughness * log(rand2D());
+
+	if(hit_dist > dist_inside) {
+		return false;
+	}
+
+	hitRec.t = rec1 + (hit_dist / ray_length);
+	hitRec.p = at(ray, hitRec.t);
+	hitRec.normal = normalize(hitRec.p - sphere.center);
+	hitRec.front_face = true;
+
 	return true;
 }
 
@@ -118,7 +191,7 @@ fn hit_quad(quad : Quad, tmin : f32, tmax : f32, ray : Ray) -> bool {
 
 	hitRec.t = t;
 	hitRec.p = intersection;
-	hitRec.normal = quad.normal;
+	hitRec.normal = normalize(quad.normal);
 	hitRec.front_face = dot(ray.dir, hitRec.normal) < 0;
 	if(hitRec.front_face == false)
 	{

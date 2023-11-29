@@ -49,7 +49,7 @@ async function main(device) {
 
 	var stats = new Stats();
 	stats.showPanel( 0 ); // 0: fps, 1: ms, 2: mb, 3+: custom
-	document.body.appendChild( stats.dom );
+	// document.body.appendChild( stats.dom );
   
 	var str_header = await loadTextfile('./shaders/header.wgsl');
 	var str_common = await loadTextfile('./shaders/common.wgsl');
@@ -68,7 +68,6 @@ async function main(device) {
 	const camera = new Camera(canvas);
 
 	const scene = new Scene();
-
 
 	// Setting uniforms
 	var screenDims = new Float32Array([WIDTH, HEIGHT, 1, 0]);
@@ -250,7 +249,7 @@ async function main(device) {
 	};
 
 	// eye, center, up
-	camera.set_camera([0, 0, 2.5], [0, 0, 0], [0, 1, 0]);
+	camera.set_camera([0.5, 0, 2.5], [0.5, 0, 0], [0, 1, 0]);
 	function render()
 	{
 		device.queue.writeBuffer(viewMatrixBuffer, 0, camera.viewMatrix);
@@ -299,8 +298,8 @@ async function main(device) {
 		frame += 1.0;
 		stats.begin();
 
-		// if(frame % 500 == 0)
-		// 	console.log(frame);
+		if(frame % 500 == 0)
+			console.log(frame);
 
 		screenDims[2] = frame;
 		screenDims[3] = (camera.MOVING || camera.keyPress) ? 1 : 0;
@@ -354,12 +353,12 @@ async function main(device) {
 		// 	avgTime = 0;
 		// }
 
-		let currentTime = performance.now();
-		const elapsed = currentTime - startTime;
-		if(elapsed < frameDelay) {
-			await new Promise((resolve) => setTimeout(resolve, frameDelay - elapsed));
-		}
-		startTime = performance.now();
+		// let currentTime = performance.now();
+		// const elapsed = currentTime - startTime;
+		// if(elapsed < frameDelay) {
+		// 	await new Promise((resolve) => setTimeout(resolve, frameDelay - elapsed));
+		// }
+		// startTime = performance.now();
 
 		stats.end();
 	  	requestAnimationFrame(render2);

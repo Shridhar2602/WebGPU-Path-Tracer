@@ -1,11 +1,13 @@
 const PI = 3.1415926535897932385;
-const MIN_FLOAT = 0.000001;
+const MIN_FLOAT = 0.0001;
 const MAX_FLOAT = 999999999.999;
 const LAMBERTIAN = 0;
 const MIRROR = 1;
 const GLASS = 2;
-const NUM_SAMPLES = 1;
-const MAX_BOUNCES = 5;
+const ISOTROPIC = 3;
+const ANISOTROPIC = 4;
+const NUM_SAMPLES = 2;
+const MAX_BOUNCES = 100;
 const ROTATION = false;
 
 @group(0) @binding(0) var<uniform> screenDims: vec4<f32>;
