@@ -4,7 +4,7 @@ export const FS = `
 
 fn get2Dfrom1D(pos: vec2f) -> u32 {
 
-    return (u32(pos.y) * u32(screenDims.x) + u32(pos.x));
+    return (u32(pos.y) * u32(uniforms.screenDims.x) + u32(pos.x));
 }
 
 // fn aces_approx(v : vec3f) -> vec3f
@@ -22,12 +22,12 @@ fn get2Dfrom1D(pos: vec2f) -> u32 {
 @fragment fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
 
 	let i = get2Dfrom1D(fragCoord.xy);
-	var color = framebuffer[i].xyz / screenDims.z;
+	var color = framebuffer[i].xyz / uniforms.frameNum;
 
 	color = aces_approx(color.xyz);
 	color = pow(color.xyz, vec3f(1/2.2));
 
-	if(screenDims[3] == 1)
+	if(uniforms.resetBuffer == 1)
 	{
 		framebuffer[i] = vec4f(0);
 	}

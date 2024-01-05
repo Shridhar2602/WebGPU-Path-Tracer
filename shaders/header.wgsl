@@ -6,26 +6,43 @@ const MIRROR = 1;
 const GLASS = 2;
 const ISOTROPIC = 3;
 const ANISOTROPIC = 4;
-const NUM_SAMPLES = 2;
+const NUM_SAMPLES = 1;
 const MAX_BOUNCES = 100;
-const ROTATION = false;
+const STRATIFY = false;
+const IMPORTANCE_SAMPLING = false;
+const STACK_SIZE = 20;
 
-@group(0) @binding(0) var<uniform> screenDims: vec4<f32>;
+@group(0) @binding(0) var<uniform> uniforms : Uniforms;
 @group(0) @binding(1) var<storage, read> sphere_objs: array<Sphere>;
 @group(0) @binding(2) var<storage, read> quad_objs: array<Quad>;
 @group(0) @binding(3) var<storage, read_write> framebuffer: array<vec4f>;
-@group(0) @binding(4) var<uniform> viewMatrix: mat4x4f;
 @group(0) @binding(5) var<storage, read> triangles: array<Triangle>;
 @group(0) @binding(6) var<storage, read> meshes: array<Mesh>;
 @group(0) @binding(7) var<storage, read> transforms : array<modelTransform>;
 @group(0) @binding(8) var<storage, read> materials: array<Material>;
 @group(0) @binding(9) var<storage, read> bvh: array<AABB>;
 
-struct viewPort {
-	viewPortX : f32,
-	viewPortY : f32,
-	pixel_delta_u : vec3f,
-	pixel_delta_v : vec3f,
+var<private> NUM_SPHERES : i32;
+var<private> NUM_QUADS : i32;
+var<private> NUM_MESHES : i32;
+var<private> NUM_TRIANGLES : i32;
+var<private> NUM_AABB : i32;
+
+var<private> randState : u32 = 0u;
+var<private> pixelCoords : vec3f;
+
+var<private> hitRec : HitRecord;
+var<private> scatterRec : ScatterRecord;
+var<private> lights : Quad;
+var<private> ray_tmin : f32 = 0.000001;
+var<private> ray_tmax : f32 = MAX_FLOAT;
+var<private> stack : array<i32, STACK_SIZE>;
+
+struct Uniforms {
+	screenDims : vec2f,
+	frameNum : f32,
+	resetBuffer : f32,
+	viewMatrix : mat4x4f,
 }
 
 struct Ray {

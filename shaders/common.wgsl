@@ -1,19 +1,3 @@
-var<private> NUM_SPHERES : i32;
-var<private> NUM_QUADS : i32;
-var<private> NUM_MESHES : i32;
-var<private> NUM_TRIANGLES : i32;
-var<private> NUM_AABB : i32;
-
-var<private> randState : u32 = 0u;
-var<private> coords : vec3f;
-
-var<private> hitRec : HitRecord;
-var<private> scatterRec : ScatterRecord;
-var<private> lights : Quad;
-var<private> ray_tmin : f32 = 0.000001;
-var<private> ray_tmax : f32 = MAX_FLOAT;
-var<private> stack : array<i32, 20>;
-
 fn at(ray : Ray, t : f32) -> vec3f {
 	return ray.origin + t * ray.dir;
 }
